@@ -1,12 +1,12 @@
 import streamlit as st
 import requests
 
-st.title("نسخ منتج عام إلى حسابي على Reverb")
+st.title("نسخ منتج معروض إلى حسابي على Reverb")
 
 # إدخال الـ Token ديالك
 token = st.text_input("دخل الـ Reverb Token ديالك:", type="password")
 
-# إدخال ID ديال المنتج العام
+# إدخال ID ديال المنتج العام (خاص يكون باقي معروض للبيع)
 product_id = st.text_input("دخل ID ديال المنتج العام:")
 
 if token and product_id:
