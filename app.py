@@ -1,49 +1,60 @@
+import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 
-# لائحة روابط المنتجات من مواقع خارجية
-urls = [
-    "https://www.amazon.com/dp/B08N5WRWNW",
-    "https://www.amazon.com/dp/B07FZ8S74R"
-]
+st.title("🗂️ Reverb Bulk Clone Manager")
 
-# إعدادات Reverb
-REVERB_TOKEN = "YOUR_REVERB_TOKEN"
-SHIPPING_ID = 114029
+# إدخال Token
+token = st.text_input("🔒 أدخل Reverb Token الخاص بك:", type="password")
 
-headers = {
-    "Authorization": f"Bearer {REVERB_TOKEN}",
-    "Accept-Version": "3.0",
-    "Content-Type": "application/json"
-}
+# إدخال روابط المنتجات (IDs أو URLs)
+urls_input = st.text_area("🆔 أدخل IDs أو روابط المنتجات (واحد في كل سطر):")
 
-for url in urls:
-    page = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    soup = BeautifulSoup(page.content, "html.parser")
+# إدخال shipping_profile_id
+shipping_id = st.text_input("🚚 أدخل shipping_profile_id الخاص بك:")
 
-    # استخراج البيانات الأساسية
-    title = soup.find(id="productTitle").get_text(strip=True) if soup.find(id="productTitle") else "منتج بدون عنوان"
-    price = soup.find("span", {"class": "a-price-whole"}).get_text(strip=True) if soup.find("span", {"class": "a-price-whole"}) else "100.00"
-    image = soup.find("img", {"id": "landingImage"})["src"] if soup.find("img", {"id": "landingImage"}) else None
+# خيار تخفيض السعر (مثلاً 50%)
+discount = st.checkbox("☑️ 💲 Clone at 50% Off")
 
-    # بناء JSON صالح لـ Reverb
-    new_listing = {
-        "title": title,
-        "description": "مستورد من موقع خارجي",
-        "price": price,
-        "currency": "USD",
-        "condition": "used",
-        "shipping_profile_id": SHIPPING_ID,
-        "photos": [{"url": image}] if image else []
-    }
+if st.button("🚀 بدء النسخ"):
+    if not token or not shipping_id or not urls_input.strip():
+        st.error("❌ خاصك تدخل Token, shipping_profile_id, وروابط المنتجات.")
+    else:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept-Version": "3.0",
+            "Content-Type": "application/json"
+        }
 
-    # إرسال POST للـ API ديال Reverb
-    response = requests.post(
-        "https://api.reverb.com/api/listings",
-        headers=headers,
-        json=new_listing
-    )
+        urls = [u.strip() for u in urls_input.splitlines() if u.strip()]
 
-    print(f"🔄 معالجة الرابط: {url}")
-    print(response.status_code)
-    print(response.json())
+        for url in urls:
+            st.write(f"🗂️ جاري نسخ المنتج: {url}")
+            try:
+                # هنا خاصك تجيب بيانات المنتج الأصلي (مثلاً عبر API أو scraping)
+                # مؤقتاً نخلي مثال بسيط
+                new_listing = {
+                    "title": "نسخة من المنتج الأصلي",
+                    "description": "تم نسخه من رابط خارجي",
+                    "price": "100.00",
+                    "currency": "USD",
+                    "condition": "used",
+                    "shipping_profile_id": int(shipping_id),
+                    "photos": [{"url": "https://i.imgur.com/example.jpg"}]
+                }
+
+                # إذا كان خيار التخفيض مفعّل
+                if discount:
+                    new_listing["price"] = str(float(new_listing["price"]) * 0.5)
+
+                response = requests.post("https://api.reverb.com/api/listings",
+                                         headers=headers,
+                                         json=new_listing)
+
+                if response.status_code == 201:
+                    st.success(f"✅ المنتج من {url} تليستى بنجاح!")
+                else:
+                    st.error(f"❌ خطأ مع {url}: {response.status_code}")
+                    st.write(response.json())
+
+            except Exception as e:
+                st.error(f"⚠️ مشكل مع الرابط {url}: {e}")
