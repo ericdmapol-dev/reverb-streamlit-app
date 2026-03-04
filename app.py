@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 
 st.title("🌍 Multi-Site Import → Reverb مع رفع الصور")
 
-token = st.text_input("4a045b7e8d29aff1b6c630982d1206f6d17c56edbf529c52cbd08e81494e0d78")
-shipping_id = st.text_input("114105")
+token = st.text_input("🔐 دخل Reverb Token:", type="password")
+shipping_id = st.text_input("🚚 دخل shipping_profile_id:")
 
-urls_input = st.text_area("📌 https://www.ebay.com/itm/366022048648?_skw=GUTAR&itmmeta=01KJWPJCAF61AE8J8ZABPXT273&hash=item55389d3b88:g:cWEAAeSwGSZpJ9Mh&itmprp=enc%3AAQALAAAA4GfYFPkwiKCW4ZNSs2u11xAiVUxMAi7c3BYmqJhJ6phqGZ7zNHWwGI5nbyByvfRk89dQuB6ksJGY%2FKWdMHre30dDZw0kgWwvSYGQbUl82F4jrR2ppc3wdI%2BaU8ghy2jEb%2BVCNS0if1G06pQrfK2cWJmAFnkehv1qYufFZSoUSdEVaAzaH0nmhyfHlFVdNeENWl%2FJcB8XKzE%2B3cXlNsAczbl%2FAhOKVzzXCZQM%2Fin9eyaHjqWBVxuWeub1978gS81NwtfjHOi8yBxJ44chsvnuorg21XtqXP7d33KVXlkB9Y17%7Ctkp%3ABk9SR4bGyZaXZw):")
+urls_input = st.text_area("📌 روابط المنتجات (واحد في كل سطر):")
 uploaded_files = st.file_uploader("🖼️ رفع صور إضافية (اختياري):", type=["jpg","png"], accept_multiple_files=True)
 
 def scrape_amazon(url):
@@ -36,10 +36,10 @@ def scrape_aliexpress(url):
 
 if st.button("🚀 استيراد المنتجات"):
     if not token or not shipping_id or not urls_input.strip():
-        st.error("4a045b7e8d29aff1b6c630982d1206f6d17c56edbf529c52cbd08e81494e0d78, 114105, https://www.ebay.com/itm/366022048648?_skw=GUTAR&itmmeta=01KJWPJCAF61AE8J8ZABPXT273&hash=item55389d3b88:g:cWEAAeSwGSZpJ9Mh&itmprp=enc%3AAQALAAAA4GfYFPkwiKCW4ZNSs2u11xAiVUxMAi7c3BYmqJhJ6phqGZ7zNHWwGI5nbyByvfRk89dQuB6ksJGY%2FKWdMHre30dDZw0kgWwvSYGQbUl82F4jrR2ppc3wdI%2BaU8ghy2jEb%2BVCNS0if1G06pQrfK2cWJmAFnkehv1qYufFZSoUSdEVaAzaH0nmhyfHlFVdNeENWl%2FJcB8XKzE%2B3cXlNsAczbl%2FAhOKVzzXCZQM%2Fin9eyaHjqWBVxuWeub1978gS81NwtfjHOi8yBxJ44chsvnuorg21XtqXP7d33KVXlkB9Y17%7Ctkp%3ABk9SR4bGyZaXZw.")
+        st.error("❌ خاصك تدخل Token, shipping_profile_id, وروابط المنتجات.")
     else:
         headers = {
-            "Authorization": f"Bearer {4a045b7e8d29aff1b6c630982d1206f6d17c56edbf529c52cbd08e81494e0d78}",
+            "Authorization": f"Bearer {token}",
             "Accept-Version": "3.0",
             "Content-Type": "application/json"
         }
@@ -61,7 +61,7 @@ if st.button("🚀 استيراد المنتجات"):
                 # الصور: إذا ما كانش رابط صالح، نستعمل الصور المرفوعة
                 photos = []
                 if image:
-                    photos.append({"" https://drive.google.com/file/d/13i6ah45K-UTkvc8-KgUVhSDkHPSRx5yf/view?usp=drive_link"": image})
+                    photos.append({"url": image})
                 if uploaded_files:
                     for file in uploaded_files:
                         # هنا خاصك ترفع الصور لخدمة خارجية (مثلاً Imgur API) باش تولّد روابط مباشرة
