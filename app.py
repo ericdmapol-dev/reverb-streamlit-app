@@ -8,7 +8,7 @@ token = st.text_input("دخل الـ Reverb Token ديالك:", type="password")
 
 if token:
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearerf3d720af60f2e6e7ef362acbbd9bc715b33afa3d519e9cb234074654856469b7",
         "Accept-Version": "3.0"
     }
 
