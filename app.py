@@ -1,42 +1,62 @@
 import streamlit as st
 import requests
 
-st.title("نسخ منتج عام إلى حسابي على Reverb")
+st.title("Reverb Bulk Clone Manager")
 
-# إدخال الـ Token ديالك
-token = st.text_input("دخل الـ Reverb Token ديالك:", type="password")
+# 1. Login
+token = st.text_input("🔐 دخل الـ Reverb Token ديالك:", type="password")
 
-# إدخال ID ديال المنتج العام (خاص يكون باقي معروض للبيع)
-product_id = st.text_input("دخل ID ديال المنتج العام:")
+# 2. Bulk Clone
+product_ids = st.text_area("🆔 دخل IDs أو روابط المنتجات (مفصولين بفاصلة):")
 
-if token and product_id:
+# 3. Shipping ID
+shipping_id = st.text_input("🚚 دخل shipping_profile_id ديالك:")
+
+# خيار تخفيض السعر 50%
+discount = st.checkbox("💲 Clone at 50% Off")
+
+if token and product_ids and shipping_id:
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept-Version": "3.0",
         "Content-Type": "application/json"
     }
 
-    # 1. نجيب بيانات المنتج العام
-    response = requests.get(f"https://api.reverb.com/api/listings/{product_id}")
-    if response.status_code == 200:
-        product = response.json()
-        st.write("📩 بيانات المنتج العام:", product)
+    ids = [pid.strip() for pid in product_ids.split(",") if pid.strip()]
+    for pid in ids:
+        st.markdown(f"---\n🔄 جاري نسخ المنتج: `{pid}`")
 
-        # 2. نبني Listing جديد فكونط ديالي بنفس البيانات
+        # جلب بيانات المنتج العام
+        res = requests.get(f"https://api.reverb.com/api/listings/{pid}", headers={"Accept-Version": "3.0"})
+        if res.status_code != 200:
+            st.error(f"❌ خطأ فـ جلب المنتج `{pid}`: {res.status_code}")
+            continue
+
+        product = res.json()
+
+        # حساب السعر مع الخصم إذا مفعّل
+        price = product.get("price", {}).get("amount", "100.00")
+        if discount and price:
+            try:
+                price = str(float(price) / 2)
+            except:
+                pass
+
+        # بناء Listing جديد
         new_listing = {
             "title": product.get("title", "منتج بدون عنوان"),
-            "description": product.get("description", f"نسخة من منتج عام: {product.get('title', '')}"),
-            "price": product.get("price", {}).get("amount", "100.00"),
+            "description": product.get("description", ""),
+            "price": price,
             "currency": product.get("price", {}).get("currency", "USD"),
             "make": product.get("make", ""),
             "model": product.get("model", ""),
             "year": product.get("year", ""),
             "finish": product.get("finish", ""),
             "condition": product.get("condition", "used"),
-            "shipping_profile_id": 123456  # بدّلها بالـ ID ديال الشحن من حسابك
+            "shipping_profile_id": int(shipping_id)
         }
 
-        # 3. نضيف الصور إذا كاينة
+        # نسخ الصور
         photos = []
         if product.get("photos"):
             for photo in product["photos"]:
@@ -44,18 +64,11 @@ if token and product_id:
         if photos:
             new_listing["photos"] = photos
 
-        # 4. نرسل الطلب لإنشاء المنتج الجديد
-        create_response = requests.post(
-            "https://api.reverb.com/api/listings",
-            headers=headers,
-            json=new_listing
-        )
-
-        if create_response.status_code == 201:
-            st.success("✅ المنتج تليستى بنجاح فكونطك!")
-            st.write(create_response.json())
+        # إرسال POST لإنشاء المنتج الجديد
+        create = requests.post("https://api.reverb.com/api/listings", headers=headers, json=new_listing)
+        if create.status_code == 201:
+            st.success(f"✅ المنتج `{pid}` تليستى بنجاح!")
+            st.write(create.json())
         else:
-            st.error(f"❌ ما قدرش يخلق المنتج: {create_response.status_code}")
-            st.write(create_response.json())
-    else:
-        st.error(f"❌ خطأ فـ جلب المنتج العام: {response.status_code}")
+            st.error(f"❌ خطأ فـ إنشاء المنتج `{pid}`: {create.status_code}")
+            st.write(create.json())
