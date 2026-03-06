@@ -4,6 +4,8 @@ import re
 import time
 import random
 
+st.set_page_config(page_title="Reverb Bulk Clone Manager")
+
 st.title("Reverb Bulk Clone Manager")
 
 token = st.text_input("Reverb Token", type="password")
@@ -13,7 +15,7 @@ discount = st.checkbox("Clone at 50% Off")
 
 headers = {
     "Authorization": f"Bearer {token}",
-    "Accept": "application/hal+json",
+    "Accept": "application/hal+json; version=3",
     "Content-Type": "application/json"
 }
 
@@ -25,25 +27,22 @@ def extract_id(text):
 
 def get_listing(listing_id):
 
-    url = f"https://api.reverb.com/api/listings/{listing_id}"
+    try:
 
-    r = requests.get(url, headers=headers)
+        url = f"https://api.reverb.com/api/listings/{listing_id}"
 
-    st.write("API Status:", r.status_code)
+        r = requests.get(url, headers=headers)
 
-    if r.status_code == 401:
-        st.error("Token invalid")
+        st.write("API Status:", r.status_code)
 
-    if r.status_code == 404:
-        st.error("Listing not found")
+        if r.status_code != 200:
+            return None
 
-    if r.status_code == 403:
-        st.error("Permission problem")
+        return r.json()
 
-    if r.status_code != 200:
+    except:
         return None
 
-    return r.json()
 
 def create_clone(data):
 
@@ -76,15 +75,25 @@ def create_clone(data):
 
 if st.button("Start Clone"):
 
+    if token == "":
+        st.error("Enter Reverb Token")
+        st.stop()
+
     lines = [l for l in urls.split("\n") if l.strip() != ""]
 
     total = len(lines)
+
+    if total == 0:
+        st.error("Add at least one listing URL")
+        st.stop()
 
     progress = st.progress(0)
 
     for i, line in enumerate(lines):
 
         listing_id = extract_id(line)
+
+        st.write("Processing:", listing_id)
 
         data = get_listing(listing_id)
 
@@ -96,6 +105,7 @@ if st.button("Start Clone"):
 
         if result == 201 or result == 200:
             st.success(f"Cloned {listing_id}")
+
         else:
             st.error(f"Clone error {listing_id}")
 
