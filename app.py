@@ -1,60 +1,94 @@
 import streamlit as st
 import requests
+import re
+import time
+import random
 
-st.title("🗂️ Reverb Bulk Clone Manager")
+st.title("Reverb Bulk Clone Manager")
 
-# إدخال Token
-token = st.text_input("🔒 أدخل Reverb Token الخاص بك:", type="password")
+token = st.text_input("Reverb Token", type="password")
+urls = st.text_area("Product URLs or IDs (one per line)")
+shipping_profile_id = st.text_input("Shipping Profile ID")
+discount = st.checkbox("Clone at 50% Off")
 
-# إدخال روابط المنتجات (IDs أو URLs)
-urls_input = st.text_area("🆔 أدخل IDs أو روابط المنتجات (واحد في كل سطر):")
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Accept": "application/hal+json",
+    "Content-Type": "application/json"
+}
 
-# إدخال shipping_profile_id
-shipping_id = st.text_input("🚚 أدخل shipping_profile_id الخاص بك:")
+def extract_id(text):
+    match = re.search(r'/item/(\d+)', text)
+    if match:
+        return match.group(1)
+    return text.strip()
 
-# خيار تخفيض السعر (مثلاً 50%)
-discount = st.checkbox("☑️ 💲 Clone at 50% Off")
+def get_listing(listing_id):
+    try:
+        url = f"https://api.reverb.com/api/listings/{listing_id}"
+        r = requests.get(url, headers=headers)
 
-if st.button("🚀 بدء النسخ"):
-    if not token or not shipping_id or not urls_input.strip():
-        st.error("❌ خاصك تدخل Token, shipping_profile_id, وروابط المنتجات.")
-    else:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept-Version": "3.0",
-            "Content-Type": "application/json"
+        if r.status_code != 200:
+            return None
+
+        return r.json()
+
+    except:
+        return None
+
+def create_clone(data):
+
+    try:
+        price = float(data["price"]["amount"])
+
+        if discount:
+            price = price * 0.5
+
+        clone = {
+            "title": data["title"],
+            "description": data["description"],
+            "price": price,
+            "shipping_profile_id": shipping_profile_id,
+            "condition": data["condition"]["slug"]
         }
 
-        urls = [u.strip() for u in urls_input.splitlines() if u.strip()]
+        r = requests.post(
+            "https://api.reverb.com/api/listings",
+            headers=headers,
+            json=clone
+        )
 
-        for url in urls:
-            st.write(f"🗂️ جاري نسخ المنتج: {url}")
-            try:
-                # هنا خاصك تجيب بيانات المنتج الأصلي (مثلاً عبر API أو scraping)
-                # مؤقتاً نخلي مثال بسيط
-                new_listing = {
-                    "title": "نسخة من المنتج الأصلي",
-                    "description": "تم نسخه من رابط خارجي",
-                    "price": "100.00",
-                    "currency": "USD",
-                    "condition": "used",
-                    "shipping_profile_id": int(shipping_id),
-                    "photos": [{"url": "https://i.imgur.com/example.jpg"}]
-                }
+        return r.status_code
 
-                # إذا كان خيار التخفيض مفعّل
-                if discount:
-                    new_listing["price"] = str(float(new_listing["price"]) * 0.5)
+    except:
+        return "error"
 
-                response = requests.post("https://api.reverb.com/api/listings",
-                                         headers=headers,
-                                         json=new_listing)
 
-                if response.status_code == 201:
-                    st.success(f"✅ المنتج من {url} تليستى بنجاح!")
-                else:
-                    st.error(f"❌ خطأ مع {url}: {response.status_code}")
-                    st.write(response.json())
+if st.button("Start Clone"):
 
-            except Exception as e:
-                st.error(f"⚠️ مشكل مع الرابط {url}: {e}")
+    lines = [l for l in urls.split("\n") if l.strip() != ""]
+
+    total = len(lines)
+
+    progress = st.progress(0)
+
+    for i, line in enumerate(lines):
+
+        listing_id = extract_id(line)
+
+        data = get_listing(listing_id)
+
+        if not data:
+            st.error(f"Failed to fetch {listing_id}")
+            continue
+
+        result = create_clone(data)
+
+        if result == 201 or result == 200:
+            st.success(f"Cloned {listing_id}")
+        else:
+            st.error(f"Error cloning {listing_id}")
+
+        progress.progress((i + 1) / total)
+
+        time.sleep(random.randint(2,5))
