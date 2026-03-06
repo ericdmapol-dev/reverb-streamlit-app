@@ -29,7 +29,7 @@ def get_listing(listing_id):
 
     try:
 
-        url = f"https://api.reverb.com/api/listings/{listing_id}"
+    url = f"https://api.reverb.com/api/listings/{listing_id}/show"
 
         r = requests.get(url, headers=headers)
 
