@@ -29,7 +29,7 @@ def get_listing(listing_id):
 
     try:
 
-    url = f"https://api.reverb.com/api/listings/{listing_id}/show"
+        url = f"https://api.reverb.com/api/listings/{listing_id}/show"
 
         r = requests.get(url, headers=headers)
 
@@ -40,7 +40,8 @@ def get_listing(listing_id):
 
         return r.json()
 
-    except:
+    except Exception as e:
+        st.error(e)
         return None
 
 
@@ -69,7 +70,8 @@ def create_clone(data):
 
         return r.status_code
 
-    except:
+    except Exception as e:
+        st.error(e)
         return "error"
 
 
@@ -105,7 +107,6 @@ if st.button("Start Clone"):
 
         if result == 201 or result == 200:
             st.success(f"Cloned {listing_id}")
-
         else:
             st.error(f"Clone error {listing_id}")
 
