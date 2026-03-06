@@ -1,48 +1,66 @@
+import streamlit as st
 import requests
+import re
 import time
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://reverb.com/"
+st.title("Reverb Bulk Clone Manager")
+
+token = st.text_input("Reverb Token", type="password")
+urls = st.text_area("Product URLs or IDs (one per line)")
+shipping_profile_id = st.text_input("Shipping Profile ID")
+discount = st.checkbox("Clone at 50% Off")
+
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Accept": "application/hal+json"
 }
 
-LISTING_IDS = [
-    "94447315",
-    "94215509",
-    "93460650"
-]
+def extract_id(url):
+    match = re.search(r'/item/(\d+)', url)
+    if match:
+        return match.group(1)
+    return url
 
+def get_listing(listing_id):
+    url = f"https://api.reverb.com/api/listings/{listing_id}"
+    r = requests.get(url, headers=headers)
+    return r.json()
 
-def fetch_listing(listing_id):
-    url = f"https://reverb.com/api/listings/{listing_id}"
+def create_clone(data):
 
-    try:
-        response = requests.get(url, headers=HEADERS)
+    price = float(data["price"]["amount"])
 
-        print(f"\nProcessing: {listing_id}")
-        print("API Status:", response.status_code)
+    if discount:
+        price = price * 0.5
 
-        if response.status_code == 200:
-            data = response.json()
+    clone = {
+        "title": data["title"],
+        "description": data["description"],
+        "price": price,
+        "shipping_profile_id": shipping_profile_id,
+        "condition": data["condition"]["slug"]
+    }
 
-            title = data.get("title")
-            price = data.get("price", {}).get("amount")
-            currency = data.get("price", {}).get("currency")
+    r = requests.post(
+        "https://api.reverb.com/api/listings",
+        headers=headers,
+        json=clone
+    )
 
-            print("Title:", title)
-            print("Price:", price, currency)
+    return r.status_code
 
-        else:
-            print("Failed to fetch", listing_id)
+if st.button("Start Clone"):
 
-    except Exception as e:
-        print("Error:", e)
+    lines = urls.split("\n")
 
+    for line in lines:
 
-print("Starting Reverb Listings Fetcher...\n")
+        listing_id = extract_id(line)
 
-for listing_id in LISTING_IDS:
-    fetch_listing(listing_id)
-    time.sleep(2)
+        data = get_listing(listing_id)
+
+        result = create_clone(data)
+
+        st.write(f"Cloned {listing_id} → Status {result}")
+
+        time.sleep(3)
