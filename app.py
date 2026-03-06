@@ -24,21 +24,31 @@ def extract_id(text):
     return text.strip()
 
 def get_listing(listing_id):
-    try:
-        url = f"https://api.reverb.com/api/listings/{listing_id}"
-        r = requests.get(url, headers=headers)
 
-        if r.status_code != 200:
-            return None
+    url = f"https://api.reverb.com/api/listings/{listing_id}"
 
-        return r.json()
+    r = requests.get(url, headers=headers)
 
-    except:
+    st.write("API Status:", r.status_code)
+
+    if r.status_code == 401:
+        st.error("Token invalid")
+
+    if r.status_code == 404:
+        st.error("Listing not found")
+
+    if r.status_code == 403:
+        st.error("Permission problem")
+
+    if r.status_code != 200:
         return None
+
+    return r.json()
 
 def create_clone(data):
 
     try:
+
         price = float(data["price"]["amount"])
 
         if discount:
@@ -87,7 +97,7 @@ if st.button("Start Clone"):
         if result == 201 or result == 200:
             st.success(f"Cloned {listing_id}")
         else:
-            st.error(f"Error cloning {listing_id}")
+            st.error(f"Clone error {listing_id}")
 
         progress.progress((i + 1) / total)
 
