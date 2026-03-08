@@ -1,103 +1,31 @@
-import streamlit as st
 import requests
-import re
-import time
-import random
-import os
+import streamlit as st
 
-st.title("Reverb Bulk Clone Manager FULL")
-
-token = st.text_input("Reverb Token", type="password")
-urls = st.text_area("Product URLs or IDs (one per line)")
-shipping_profile_id = st.text_input("Shipping Profile ID")
-
-discount = st.checkbox("Clone at 70% Price")
+API_KEY = "PUT_YOUR_API_KEY"
 
 headers = {
-    "Authorization": f"Bearer {token}",
-    "Accept": "application/hal+json",
-    "Accept-Version": "3.0",
-    "Content-Type": "application/json"
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept-Version": "3.0"
 }
 
-os.makedirs("temp_images", exist_ok=True)
-
-# استخراج ID
-def extract_id(text):
-
-    match = re.search(r'item/(\d+)', text)
-
-    if match:
-        return match.group(1)
-
-    digits = re.findall(r'\d+', text)
-
-    if digits:
-        return digits[0]
-
-    return None
+shipping_profile_id = 123456
 
 
-# جلب بيانات المنتج
 def get_listing(listing_id):
 
     url = f"https://api.reverb.com/api/listings/{listing_id}"
 
     r = requests.get(url, headers=headers)
 
-    if r.status_code != 200:
-        st.error(f"API Error {r.status_code}")
-        st.text(r.text)
-        return None
+    if r.status_code == 200:
+        return r.json()["listing"]
 
-    try:
-        return r.json()
-    except:
-        st.error("Invalid JSON response")
+    else:
+        st.error("Error getting listing")
         return None
 
 
-# استخراج روابط الصور
-def get_images(data):
-
-    images = []
-
-    try:
-        for img in data["_embedded"]["images"]:
-            images.append(img["_links"]["full"]["href"])
-    except:
-        pass
-
-    return images
-
-
-# تحميل الصور محليًا
-def download_images(listing_id, image_urls):
-
-    local_files = []
-
-    for idx, url in enumerate(image_urls):
-
-        try:
-
-            r = requests.get(url)
-
-            if r.status_code == 200:
-
-                filename = f"temp_images/{listing_id}_{idx}.jpg"
-
-                with open(filename, "wb") as f:
-                    f.write(r.content)
-
-                local_files.append(filename)
-
-        except:
-            continue
-
-    return local_files
-
-
-# إنشاء clone
 def create_clone(data):
 
     try:
@@ -105,24 +33,19 @@ def create_clone(data):
         price_amount = float(data["price"]["amount"])
         currency = data["price"]["currency"]
 
-        if discount:
-            price_amount = price_amount * 0.7
+        # تخفيض 70%
+        price_amount = price_amount * 0.70
 
         payload = {
-
             "title": data["title"],
-
             "description": data["description"],
-
             "price": {
                 "amount": price_amount,
                 "currency": currency
             },
-
             "condition": {
                 "uuid": data["condition"]["uuid"]
             },
-
             "shipping_profile_id": int(shipping_profile_id)
         }
 
@@ -132,22 +55,15 @@ def create_clone(data):
             json=payload
         )
 
-        if r.status_code in [200,201]:
+        if r.status_code == 201:
 
-            response = r.json()
+            listing_id = r.json()["listing"]["id"]
 
-            if "listing_id" in response:
-                return response["listing_id"]
-
-            if "id" in response:
-                return response["id"]
-
-            return None
+            return listing_id
 
         else:
 
-            st.error(f"Clone Error {r.status_code}")
-            st.text(r.text)
+            st.error(r.text)
             return None
 
     except Exception as e:
@@ -156,73 +72,67 @@ def create_clone(data):
         return None
 
 
-# رفع الصور
-def upload_local_images(listing_id, local_files):
+def upload_image(listing_id, image_url):
 
-    url = f"https://api.reverb.com/api/listings/{listing_id}/images"
+    try:
 
-    for file_path in local_files:
+        img = requests.get(image_url)
 
-        try:
+        files = {
+            "file": ("image.jpg", img.content)
+        }
 
-            with open(file_path, "rb") as f:
+        url = f"https://api.reverb.com/api/listings/{listing_id}/images"
 
-                files = {"image[file]": (os.path.basename(file_path), f)}
+        r = requests.post(url, headers={"Authorization": f"Bearer {API_KEY}"}, files=files)
 
-                r = requests.post(
-                    url,
-                    headers={"Authorization": f"Bearer {token}"},
-                    files=files
-                )
+        return r.status_code
 
-                if r.status_code not in [200,201]:
-                    st.warning("Image upload failed")
+    except Exception as e:
 
-        except:
-            continue
-
-        time.sleep(1)
+        st.error(str(e))
 
 
-# تشغيل clone
-if st.button("Start Clone"):
+def clone_images(data, new_listing_id):
 
-    if not token:
-        st.error("Enter Reverb Token")
-        st.stop()
+    try:
 
-    lines = urls.split("\n")
+        images = data.get("photos", [])
 
-    total = len(lines)
+        for img in images:
 
-    progress = st.progress(0)
+            image_url = img.get("_links", {}).get("large_crop", {}).get("href")
 
-    for i, line in enumerate(lines):
+            if image_url:
+                upload_image(new_listing_id, image_url)
 
-        listing_id = extract_id(line)
+    except Exception as e:
 
-        if not listing_id:
+        st.error(str(e))
 
-            st.warning(f"Invalid input: {line}")
-            continue
+
+st.title("Reverb Listing Cloner")
+
+listing_url = st.text_input("Listing URL")
+
+if st.button("Clone Listing"):
+
+    try:
+
+        listing_id = listing_url.split("/")[-1]
 
         data = get_listing(listing_id)
 
-        if not data:
-            continue
+        if data:
 
-        image_urls = get_images(data)
+            new_listing_id = create_clone(data)
 
-        new_listing = create_clone(data)
+            if new_listing_id:
 
-        if new_listing:
+                clone_images(data, new_listing_id)
 
-            local_files = download_images(new_listing, image_urls)
+                st.success("Listing cloned with images!")
 
-            upload_local_images(new_listing, local_files)
+    except Exception as e:
 
-            st.success(f"Cloned {listing_id} → New Listing {new_listing}")
-
-        progress.progress((i + 1) / total)
-
-        time.sleep(random.randint(2,5))
+        st.error(str(e))
