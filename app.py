@@ -20,6 +20,7 @@ headers = {
 }
 
 
+# استخراج ID من الرابط
 def extract_id(text):
 
     match = re.search(r'item/(\d+)', text)
@@ -35,6 +36,7 @@ def extract_id(text):
     return None
 
 
+# جلب بيانات المنتج
 def get_listing(listing_id):
 
     url = f"https://api.reverb.com/api/listings/{listing_id}"
@@ -53,6 +55,7 @@ def get_listing(listing_id):
         return None
 
 
+# استخراج الصور
 def get_images(data):
 
     images = []
@@ -66,6 +69,7 @@ def get_images(data):
     return images
 
 
+# رفع الصور
 def upload_images(listing_id, images):
 
     url = f"https://api.reverb.com/api/listings/{listing_id}/images"
@@ -76,15 +80,19 @@ def upload_images(listing_id, images):
             "image": img_url
         }
 
-        requests.post(
+        r = requests.post(
             url,
             headers=headers,
             json=payload
         )
 
+        if r.status_code not in [200,201]:
+            st.warning("Image upload failed")
+
         time.sleep(1)
 
 
+# إنشاء Clone
 def create_clone(data):
 
     try:
@@ -121,7 +129,15 @@ def create_clone(data):
 
         if r.status_code in [200,201]:
 
-            return r.json()["id"]
+            response = r.json()
+
+            if "listing_id" in response:
+                return response["listing_id"]
+
+            if "id" in response:
+                return response["id"]
+
+            return None
 
         else:
 
@@ -135,6 +151,7 @@ def create_clone(data):
         return None
 
 
+# تشغيل النسخ
 if st.button("Start Clone"):
 
     if not token:
@@ -169,7 +186,7 @@ if st.button("Start Clone"):
 
             upload_images(new_listing, images)
 
-            st.success(f"Cloned {listing_id} → New ID {new_listing}")
+            st.success(f"Cloned {listing_id} → New Listing {new_listing}")
 
         progress.progress((i + 1) / total)
 
