@@ -1,18 +1,19 @@
 import requests
 import streamlit as st
 
-API_KEY = "6297e5ad5f8128d94abb778e49ed921a89a21eae42cedb3b4df7e07ad77ea624"
+st.title("Reverb Listing Cloner")
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json",
-    "Accept-Version": "3.0"
-}
-
-shipping_profile_id = 114202
+api_key = st.text_input("API Key")
+shipping_profile_id = st.text_input("Shipping Profile ID")
+listing_url = st.text_input("Listing URL")
 
 
-def get_listing(listing_id):
+def get_listing(api_key, listing_id):
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0"
+    }
 
     url = f"https://api.reverb.com/api/listings/{listing_id}"
 
@@ -22,18 +23,24 @@ def get_listing(listing_id):
         return r.json()["listing"]
 
     else:
-        st.error("Error getting listing")
+        st.error(r.text)
         return None
 
 
-def create_clone(data):
+def create_clone(api_key, data, shipping_profile_id):
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept-Version": "3.0"
+    }
 
     try:
 
         price_amount = float(data["price"]["amount"])
         currency = data["price"]["currency"]
 
-        # تخفيض 70%
+        # تخفيض السعر 70%
         price_amount = price_amount * 0.70
 
         payload = {
@@ -72,7 +79,7 @@ def create_clone(data):
         return None
 
 
-def upload_image(listing_id, image_url):
+def upload_image(api_key, listing_id, image_url):
 
     try:
 
@@ -82,9 +89,13 @@ def upload_image(listing_id, image_url):
             "file": ("image.jpg", img.content)
         }
 
+        headers = {
+            "Authorization": f"Bearer {api_key}"
+        }
+
         url = f"https://api.reverb.com/api/listings/{listing_id}/images"
 
-        r = requests.post(url, headers={"Authorization": f"Bearer {API_KEY}"}, files=files)
+        r = requests.post(url, headers=headers, files=files)
 
         return r.status_code
 
@@ -93,7 +104,7 @@ def upload_image(listing_id, image_url):
         st.error(str(e))
 
 
-def clone_images(data, new_listing_id):
+def clone_images(api_key, data, new_listing_id):
 
     try:
 
@@ -104,16 +115,12 @@ def clone_images(data, new_listing_id):
             image_url = img.get("_links", {}).get("large_crop", {}).get("href")
 
             if image_url:
-                upload_image(new_listing_id, image_url)
+                upload_image(api_key, new_listing_id, image_url)
 
     except Exception as e:
 
         st.error(str(e))
 
-
-st.title("Reverb Listing Cloner")
-
-listing_url = st.text_input("Listing URL")
 
 if st.button("Clone Listing"):
 
@@ -121,17 +128,17 @@ if st.button("Clone Listing"):
 
         listing_id = listing_url.split("/")[-1]
 
-        data = get_listing(listing_id)
+        data = get_listing(api_key, listing_id)
 
         if data:
 
-            new_listing_id = create_clone(data)
+            new_listing_id = create_clone(api_key, data, shipping_profile_id)
 
             if new_listing_id:
 
-                clone_images(data, new_listing_id)
+                clone_images(api_key, data, new_listing_id)
 
-                st.success("Listing cloned with images!")
+                st.success("Listing cloned successfully with images!")
 
     except Exception as e:
 
