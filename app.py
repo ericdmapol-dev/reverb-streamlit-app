@@ -1,73 +1,65 @@
-import requests
 import streamlit as st
-
-st.set_page_config(page_title="Reverb Clone Tool", layout="centered")
+import requests
 
 st.title("Reverb Listing Cloner")
 
-api_key = st.text_input("API Key")
+api_key = st.text_input("Reverb API Key")
 shipping_profile_id = st.text_input("Shipping Profile ID")
 listing_url = st.text_input("Listing URL")
 
 
-def get_headers(api_key):
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0",
-        "Content-Type": "application/hal+json",
-        "Accept": "application/hal+json"
-    }
-
-
 def extract_listing_id(url):
     try:
-        return url.split("/item/")[1].split("-")[0]
+        part = url.split("/item/")[1]
+        listing_id = part.split("-")[0]
+        return listing_id
     except:
         return None
 
 
 def get_listing(api_key, listing_id):
 
-    headers = get_headers(api_key)
+    headers = {
+        "Authorization": api_key,
+        "Accept-Version": "3.0"
+    }
 
     url = f"https://api.reverb.com/api/listings/{listing_id}"
 
     r = requests.get(url, headers=headers)
 
     if r.status_code != 200:
-        st.error(r.text)
+        st.error(f"API Error: {r.text}")
         return None
 
-    data = r.json()
-
-    if "listing" not in data:
-        st.error("Listing not found")
-        return None
-
-    return data["listing"]
+    return r.json()
 
 
-def create_clone(api_key, data, shipping_profile_id):
+def create_clone(api_key, listing, shipping_profile_id):
 
-    headers = get_headers(api_key)
+    headers = {
+        "Authorization": api_key,
+        "Accept-Version": "3.0",
+        "Content-Type": "application/json"
+    }
 
     try:
 
-        price_amount = float(data["price"]["amount"])
-        currency = data["price"]["currency"]
+        price = float(listing["price"]["amount"])
+        currency = listing["price"]["currency"]
 
         # تخفيض السعر 70%
-        new_price = price_amount * 0.70
+        price = price * 0.70
 
         payload = {
-            "title": data["title"],
-            "description": data["description"],
+            "title": listing["title"],
+            "description": listing["description"],
             "price": {
-                "amount": str(round(new_price,2)),
+                "amount": price,
                 "currency": currency
             },
             "condition": {
-                "uuid": data["condition"]["uuid"]
+                "uuid": listing["condition"]["uuid"]
             },
             "shipping_profile_id": int(shipping_profile_id)
         }
@@ -78,50 +70,43 @@ def create_clone(api_key, data, shipping_profile_id):
             json=payload
         )
 
-        if r.status_code not in [200,201]:
-
+        if r.status_code not in [200, 201]:
             st.error(r.text)
             return None
 
-        res = r.json()
-
-        return res["listing"]["id"]
+        return r.json()["id"]
 
     except Exception as e:
         st.error(str(e))
         return None
 
 
-def upload_image(api_key, listing_id, image_url):
+def upload_images(api_key, listing_id, listing):
 
     headers = {
-        "Authorization": f"Bearer {api_key}"
+        "Authorization": api_key
     }
 
-    img = requests.get(image_url)
+    photos = listing.get("photos", [])
 
-    files = {
-        "file": ("image.jpg", img.content)
-    }
+    for photo in photos:
 
-    url = f"https://api.reverb.com/api/listings/{listing_id}/images"
+        try:
 
-    r = requests.post(url, headers=headers, files=files)
+            img_url = photo["_links"]["large_crop"]["href"]
 
-    if r.status_code not in [200,201]:
-        st.warning("Image upload failed")
+            img = requests.get(img_url)
 
+            files = {
+                "file": ("image.jpg", img.content)
+            }
 
-def clone_images(api_key, data, listing_id):
+            url = f"https://api.reverb.com/api/listings/{listing_id}/images"
 
-    photos = data.get("photos", [])
+            requests.post(url, headers=headers, files=files)
 
-    for img in photos:
-
-        image_url = img.get("_links", {}).get("large_crop", {}).get("href")
-
-        if image_url:
-            upload_image(api_key, listing_id, image_url)
+        except:
+            pass
 
 
 if st.button("Clone Listing"):
@@ -133,23 +118,17 @@ if st.button("Clone Listing"):
     listing_id = extract_listing_id(listing_url)
 
     if not listing_id:
-        st.error("Invalid listing URL")
+        st.error("Invalid Listing URL")
         st.stop()
 
-    st.write("Fetching listing...")
+    listing = get_listing(api_key, listing_id)
 
-    data = get_listing(api_key, listing_id)
+    if listing:
 
-    if data:
+        new_listing_id = create_clone(api_key, listing, shipping_profile_id)
 
-        st.write("Creating clone...")
+        if new_listing_id:
 
-        new_listing = create_clone(api_key, data, shipping_profile_id)
+            upload_images(api_key, new_listing_id, listing)
 
-        if new_listing:
-
-            st.write("Uploading images...")
-
-            clone_images(api_key, data, new_listing)
-
-            st.success(f"Clone created! Listing ID: {new_listing}")
+            st.success("Listing cloned successfully!")
