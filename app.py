@@ -13,9 +13,10 @@ discount = st.checkbox("Clone at 50% Off")
 
 headers = {
     "Authorization": f"Bearer {token}",
-    "Accept": "application/hal+json"
+    "Accept": "application/hal+json",
+    "Accept-Version": "3.0",
+    "Content-Type": "application/json"
 }
-
 
 def extract_id(text):
 
@@ -52,26 +53,36 @@ def get_listing(listing_id):
 
 def create_clone(data):
 
-    price = float(data["price"]["amount"])
+    try:
 
-    if discount:
-        price = price * 0.5
+        price = float(data["price"]["amount"])
 
-    clone = {
-        "title": data["title"],
-        "description": data["description"],
-        "price": price,
-        "shipping_profile_id": shipping_profile_id,
-        "condition": data["condition"]["slug"]
-    }
+        if discount:
+            price = price * 0.5
 
-    r = requests.post(
-        "https://api.reverb.com/api/listings",
-        headers=headers,
-        json=clone
-    )
+        payload = {
+            "title": data["title"],
+            "description": data["description"],
+            "price": price,
+            "shipping_profile_id": shipping_profile_id,
+            "condition": data["condition"]["slug"]
+        }
 
-    return r.status_code
+        r = requests.post(
+            "https://api.reverb.com/api/listings",
+            headers=headers,
+            json=payload
+        )
+
+        if r.status_code not in [200,201]:
+            st.error(f"Clone Error {r.status_code}")
+            st.text(r.text)
+
+        return r.status_code
+
+    except Exception as e:
+        st.error(str(e))
+        return None
 
 
 if st.button("Start Clone"):
