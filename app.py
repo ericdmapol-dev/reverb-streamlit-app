@@ -7,7 +7,9 @@ api_key = st.text_input("API Key")
 shipping_profile_id = st.text_input("Shipping Profile ID")
 listing_url = st.text_input("Listing URL")
 
+
 def extract_listing_id(url):
+
     try:
         part = url.split("/item/")[1]
         listing_id = part.split("-")[0]
@@ -28,13 +30,13 @@ def get_listing(api_key, listing_id):
     r = requests.get(url, headers=headers)
 
     if r.status_code != 200:
-        st.error(f"API Error: {r.text}")
+        st.error(r.text)
         return None
 
     return r.json()
 
 
-def create_clone(api_key, listing, shipping_profile_id):
+def create_listing(api_key, listing, shipping_profile_id):
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -74,21 +76,49 @@ def create_clone(api_key, listing, shipping_profile_id):
             st.error(data)
             return None
 
-        if "id" not in data:
+        if "listing" not in data:
             st.error(data)
             return None
 
-        return data["id"]
+        return data["listing"]["id"]
 
     except Exception as e:
         st.error(str(e))
         return None
 
 
+def upload_images(api_key, source_listing, new_listing_id):
+
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    photos = source_listing.get("photos", [])
+
+    for photo in photos:
+
+        try:
+
+            img_url = photo["_links"]["large_crop"]["href"]
+
+            img = requests.get(img_url)
+
+            files = {
+                "file": ("image.jpg", img.content)
+            }
+
+            url = f"https://api.reverb.com/api/listings/{new_listing_id}/images"
+
+            requests.post(url, headers=headers, files=files)
+
+        except:
+            pass
+
+
 if st.button("Clone Listing"):
 
     if not api_key or not shipping_profile_id or not listing_url:
-        st.error("Please fill all fields")
+        st.error("Fill all fields")
         st.stop()
 
     listing_id = extract_listing_id(listing_url)
@@ -101,8 +131,10 @@ if st.button("Clone Listing"):
 
     if listing:
 
-        new_listing_id = create_clone(api_key, listing, shipping_profile_id)
+        new_listing_id = create_listing(api_key, listing, shipping_profile_id)
 
         if new_listing_id:
 
-            st.success(f"Listing cloned successfully. New ID: {new_listing_id}")
+            upload_images(api_key, listing, new_listing_id)
+
+            st.success(f"Listing cloned successfully! New ID: {new_listing_id}")
