@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import re
 import time
+import random
 
 st.title("Reverb Bulk Clone Manager")
 
@@ -15,16 +16,39 @@ headers = {
     "Accept": "application/hal+json"
 }
 
-def extract_id(url):
-    match = re.search(r'/item/(\d+)', url)
+
+def extract_id(text):
+
+    match = re.search(r'item/(\d+)', text)
+
     if match:
         return match.group(1)
-    return url
+
+    digits = re.findall(r'\d+', text)
+
+    if digits:
+        return digits[0]
+
+    return None
+
 
 def get_listing(listing_id):
+
     url = f"https://api.reverb.com/api/listings/{listing_id}"
+
     r = requests.get(url, headers=headers)
-    return r.json()
+
+    if r.status_code != 200:
+        st.error(f"API Error {r.status_code}")
+        st.text(r.text)
+        return None
+
+    try:
+        return r.json()
+    except:
+        st.error("Invalid JSON response")
+        return None
+
 
 def create_clone(data):
 
@@ -49,18 +73,30 @@ def create_clone(data):
 
     return r.status_code
 
+
 if st.button("Start Clone"):
 
     lines = urls.split("\n")
 
-    for line in lines:
+    progress = st.progress(0)
+
+    for i, line in enumerate(lines):
 
         listing_id = extract_id(line)
 
+        if not listing_id:
+            st.warning(f"Invalid link: {line}")
+            continue
+
         data = get_listing(listing_id)
+
+        if not data:
+            continue
 
         result = create_clone(data)
 
         st.write(f"Cloned {listing_id} → Status {result}")
 
-        time.sleep(3)
+        progress.progress((i + 1) / len(lines))
+
+        time.sleep(random.randint(2,5))
