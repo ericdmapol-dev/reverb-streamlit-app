@@ -1,7 +1,7 @@
 import requests
 import streamlit as st
 
-API_KEY = "PUT_YOUR_API_KEY"
+API_KEY = "6297e5ad5f8128d94abb778e49ed921a89a21eae42cedb3b4df7e07ad77ea624"
 
 headers = {
     "Authorization": f"Bearer {API_KEY}",
@@ -9,7 +9,7 @@ headers = {
     "Accept-Version": "3.0"
 }
 
-shipping_profile_id = 123456
+shipping_profile_id = 114202
 
 
 def get_listing(listing_id):
