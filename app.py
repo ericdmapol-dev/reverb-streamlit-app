@@ -19,12 +19,17 @@ def get_listing(api_key, listing_id):
 
     r = requests.get(url, headers=headers)
 
-    if r.status_code == 200:
-        return r.json()["listing"]
-
-    else:
-        st.error(r.text)
+    if r.status_code != 200:
+        st.error(f"API Error: {r.text}")
         return None
+
+    data = r.json()
+
+    if "listing" not in data:
+        st.error("Listing data not found in API response")
+        return None
+
+    return data["listing"]
 
 
 def create_clone(api_key, data, shipping_profile_id):
@@ -40,7 +45,7 @@ def create_clone(api_key, data, shipping_profile_id):
         price_amount = float(data["price"]["amount"])
         currency = data["price"]["currency"]
 
-        # تخفيض السعر 70%
+        # تخفيض 70%
         price_amount = price_amount * 0.70
 
         payload = {
@@ -62,16 +67,19 @@ def create_clone(api_key, data, shipping_profile_id):
             json=payload
         )
 
-        if r.status_code == 201:
+        if r.status_code not in [200, 201]:
 
-            listing_id = r.json()["listing"]["id"]
-
-            return listing_id
-
-        else:
-
-            st.error(r.text)
+            st.error(f"Create listing error: {r.text}")
             return None
+
+        res = r.json()
+
+        if "listing" not in res:
+
+            st.error("Listing not returned from API")
+            return None
+
+        return res["listing"]["id"]
 
     except Exception as e:
 
@@ -97,36 +105,35 @@ def upload_image(api_key, listing_id, image_url):
 
         r = requests.post(url, headers=headers, files=files)
 
-        return r.status_code
+        if r.status_code not in [200, 201]:
+            st.warning(f"Image upload failed: {r.text}")
 
     except Exception as e:
 
-        st.error(str(e))
+        st.warning(str(e))
 
 
 def clone_images(api_key, data, new_listing_id):
 
-    try:
+    images = data.get("photos", [])
 
-        images = data.get("photos", [])
+    for img in images:
 
-        for img in images:
+        image_url = img.get("_links", {}).get("large_crop", {}).get("href")
 
-            image_url = img.get("_links", {}).get("large_crop", {}).get("href")
-
-            if image_url:
-                upload_image(api_key, new_listing_id, image_url)
-
-    except Exception as e:
-
-        st.error(str(e))
+        if image_url:
+            upload_image(api_key, new_listing_id, image_url)
 
 
 if st.button("Clone Listing"):
 
     try:
 
-        listing_id = listing_url.split("/")[-1]
+        if not listing_url:
+            st.error("Enter listing URL")
+            st.stop()
+
+        listing_id = listing_url.split("/")[-1].split("-")[0]
 
         data = get_listing(api_key, listing_id)
 
@@ -138,7 +145,7 @@ if st.button("Clone Listing"):
 
                 clone_images(api_key, data, new_listing_id)
 
-                st.success("Listing cloned successfully with images!")
+                st.success("Listing cloned successfully!")
 
     except Exception as e:
 
