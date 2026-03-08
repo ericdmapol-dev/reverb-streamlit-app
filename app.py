@@ -10,7 +10,7 @@ token = st.text_input("Reverb Token", type="password")
 urls = st.text_area("Product URLs or IDs (one per line)")
 shipping_profile_id = st.text_input("Shipping Profile ID")
 
-discount = st.checkbox("Clone at 50% Off")
+discount = st.checkbox("Clone at 70% Price")
 
 headers = {
     "Authorization": f"Bearer {token}",
@@ -53,6 +53,38 @@ def get_listing(listing_id):
         return None
 
 
+def get_images(data):
+
+    images = []
+
+    try:
+        for img in data["_embedded"]["images"]:
+            images.append(img["_links"]["full"]["href"])
+    except:
+        pass
+
+    return images
+
+
+def upload_images(listing_id, images):
+
+    url = f"https://api.reverb.com/api/listings/{listing_id}/images"
+
+    for img_url in images:
+
+        payload = {
+            "image": img_url
+        }
+
+        requests.post(
+            url,
+            headers=headers,
+            json=payload
+        )
+
+        time.sleep(1)
+
+
 def create_clone(data):
 
     try:
@@ -61,7 +93,7 @@ def create_clone(data):
         currency = data["price"]["currency"]
 
         if discount:
-            price_amount = price_amount * 0.5
+            price_amount = price_amount * 0.7
 
         payload = {
 
@@ -87,18 +119,19 @@ def create_clone(data):
             json=payload
         )
 
-        if r.status_code not in [200,201]:
+        if r.status_code in [200,201]:
+
+            return r.json()["id"]
+
+        else:
 
             st.error(f"Clone Error {r.status_code}")
-
             st.text(r.text)
-
-        return r.status_code
+            return None
 
     except Exception as e:
 
         st.error(str(e))
-
         return None
 
 
@@ -110,9 +143,9 @@ if st.button("Start Clone"):
 
     lines = urls.split("\n")
 
-    progress = st.progress(0)
-
     total = len(lines)
+
+    progress = st.progress(0)
 
     for i, line in enumerate(lines):
 
@@ -121,18 +154,22 @@ if st.button("Start Clone"):
         if not listing_id:
 
             st.warning(f"Invalid input: {line}")
-
             continue
 
         data = get_listing(listing_id)
 
         if not data:
-
             continue
 
-        result = create_clone(data)
+        images = get_images(data)
 
-        st.write(f"Cloned {listing_id} → Status {result}")
+        new_listing = create_clone(data)
+
+        if new_listing:
+
+            upload_images(new_listing, images)
+
+            st.success(f"Cloned {listing_id} → New ID {new_listing}")
 
         progress.progress((i + 1) / total)
 
