@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - API CORRECT ENDPOINT")
+st.title("🎸 Reverb Cloner PRO MAX - FIXED DATA")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -52,23 +52,50 @@ def get_listing(api_key, listing_id):
         st.error(f"Connection error: {e}")
         return None
 
-def safe_extract_make_model(listing):
-    """Extract make and model safely"""
+def extract_make_model(listing):
+    """Extract make and model correctly from listing"""
+    
+    # Try to get make
     make = listing.get("make")
+    make_name = "Unknown"
+    
+    if make:
+        if isinstance(make, dict):
+            make_name = make.get("name", "Unknown")
+            if not make_name or make_name == "Unknown":
+                # Try to get from string representation
+                make_name = str(make.get("_id", "Unknown"))
+        elif isinstance(make, str):
+            make_name = make
+        elif isinstance(make, (int, float)):
+            make_name = str(make)
+    
+    # Try to get model
     model = listing.get("model")
-
-    if isinstance(make, dict):
-        make_name = make.get("name", "Unknown")
-    elif isinstance(make, str):
-        make_name = make
-    else:
-        make_name = "Unknown"
-
-    if isinstance(model, str):
-        model_name = model
-    else:
-        model_name = "Unknown"
-
+    model_name = "Unknown"
+    
+    if model:
+        if isinstance(model, dict):
+            model_name = model.get("name", "Unknown")
+            if not model_name or model_name == "Unknown":
+                # Try to get from string representation
+                model_name = str(model.get("_id", "Unknown"))
+        elif isinstance(model, str):
+            model_name = model
+        elif isinstance(model, (int, float)):
+            model_name = str(model)
+    
+    # If still unknown, try to extract from title
+    if make_name == "Unknown" or model_name == "Unknown":
+        title = listing.get("title", "")
+        if title:
+            # Try to parse make and model from title
+            parts = title.split()
+            if len(parts) >= 2 and not make_name or make_name == "Unknown":
+                make_name = parts[0]
+            if len(parts) >= 2 and not model_name or model_name == "Unknown":
+                model_name = " ".join(parts[1:3]) if len(parts) > 2 else parts[1] if len(parts) > 1 else "Unknown"
+    
     return make_name, model_name
 
 def download_images(listing):
@@ -146,7 +173,7 @@ def download_images(listing):
     return paths
 
 def create_listing(api_key, original_listing, shipping_profile_id, price_multiplier):
-    """Create new listing based on original"""
+    """Create new listing based on original with correct data"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
@@ -154,23 +181,51 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         "Accept": "application/json"
     }
 
-    make_name, model_name = safe_extract_make_model(original_listing)
+    # Extract make and model correctly
+    make_name, model_name = extract_make_model(original_listing)
+    
+    st.write(f"Extracted Make: {make_name}")
+    st.write(f"Extracted Model: {model_name}")
     
     # Calculate new price
     original_price = float(original_listing["price"]["amount"])
     new_price = round(original_price * price_multiplier, 2)
 
+    # Get condition UUID
+    condition_uuid = None
+    condition = original_listing.get("condition")
+    if condition:
+        if isinstance(condition, dict):
+            condition_uuid = condition.get("uuid")
+        elif isinstance(condition, str):
+            # If it's a string, we need to fetch the UUID
+            condition_uuid = condition
+    
+    if not condition_uuid:
+        # Default condition (Good)
+        condition_uuid = "f5d1f1b0-3b3a-0133-9c5d-22000b7b5b1b"
+    
+    # Get description
+    description = original_listing.get("description", "")
+    if not description:
+        description = f"Original listing: {original_listing.get('title', 'No title')}"
+    
+    # Get title
+    title = original_listing.get("title", f"{make_name} {model_name}".strip())
+    if not title or title == "Unknown":
+        title = f"{make_name} {model_name}".strip()
+    
     # Prepare payload - using correct Reverb API format
     payload = {
         "listing": {
-            "title": original_listing.get("title", "No Title"),
-            "description": original_listing.get("description", ""),
+            "title": title,
+            "description": description,
             "price": {
                 "amount": new_price,
                 "currency": original_listing["price"]["currency"]
             },
             "condition": {
-                "uuid": original_listing["condition"]["uuid"]
+                "uuid": condition_uuid
             },
             "make": make_name,
             "model": model_name,
@@ -178,6 +233,9 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
             "state": "draft"
         }
     }
+    
+    st.write("Sending payload:")
+    st.json(payload)
 
     try:
         response = requests.post(
@@ -188,10 +246,13 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         )
 
         if response.status_code not in [200, 201]:
-            st.error(f"Error creating listing: {response.status_code} - {response.text}")
+            st.error(f"Error creating listing: {response.status_code}")
+            st.error(f"Response: {response.text}")
             return None
 
         data = response.json()
+        st.write("Response from API:")
+        st.json(data)
 
         # Handle different response formats
         if "listing" in data:
@@ -229,9 +290,8 @@ def verify_listing_exists(api_key, listing_id):
         st.write(f"Error checking listing: {e}")
         return False
 
-# ===== CORRECTED UPLOAD FUNCTION BASED ON REVERB API DOCS =====
 def upload_images(api_key, listing_id, image_paths):
-    """Upload images using correct Reverb API endpoint"""
+    """Upload images to the listing"""
     if not image_paths:
         st.warning("No images to upload")
         return False
@@ -248,7 +308,6 @@ def upload_images(api_key, listing_id, image_paths):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
-        # Don't set Content-Type for multipart uploads
     }
 
     progress_bar = st.progress(0)
@@ -295,27 +354,11 @@ def upload_images(api_key, listing_id, image_paths):
             if upload_response.status_code in [200, 201, 202, 204]:
                 successful_uploads += 1
                 st.write(f"✅ Successfully uploaded image {i+1}")
-                
-                # Try to parse response
-                if upload_response.text:
-                    try:
-                        response_data = upload_response.json()
-                        st.write(f"Response: {json.dumps(response_data, indent=2)[:200]}")
-                    except:
-                        pass
             else:
                 st.write(f"❌ Failed to upload image {i+1}")
                 if upload_response.text:
-                    try:
-                        error_data = upload_response.json()
-                        st.write(f"Error: {json.dumps(error_data, indent=2)}")
-                    except:
-                        st.write(f"Error text: {upload_response.text[:200]}")
+                    st.write(f"Error: {upload_response.text[:200]}")
             
-        except requests.exceptions.Timeout:
-            st.warning(f"⏱️ Timeout uploading image {i+1}")
-        except requests.exceptions.RequestException as e:
-            st.warning(f"🌐 Network error: {str(e)}")
         except Exception as e:
             st.warning(f"❌ Error: {str(e)}")
         
@@ -389,10 +432,6 @@ with st.sidebar:
         value=True,
         help="Automatically publish the listing after image upload"
     )
-    
-    st.markdown("---")
-    st.markdown("### 🔑 API Endpoint Info")
-    st.markdown("Using: `/my/listings/{id}/photos`")
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -482,4 +521,4 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | Using correct API endpoint: `/my/listings/{id}/photos`")
+st.markdown("Made with 🎸 for Reverb sellers | Fixed data extraction")
