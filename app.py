@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import os
 import re
-from bs4 import BeautifulSoup
 
 st.title("Reverb Listing Cloner PRO")
 
@@ -12,6 +11,7 @@ listing_url = st.text_input("Listing URL")
 
 
 def extract_listing_id(url):
+
     try:
         part = url.split("/item/")[1]
         listing_id = part.split("-")[0]
@@ -143,27 +143,31 @@ def download_images_from_page(url):
 def upload_images(api_key, listing_id, paths):
 
     headers = {
-        "Authorization": f"Bearer {api_key}"
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0"
     }
 
     for path in paths:
 
         try:
 
+            # STEP 1 create photo slot
+            url = f"https://api.reverb.com/api/listings/{listing_id}/photos"
+
+            r = requests.post(url, headers=headers)
+
+            data = r.json()
+
+            upload_url = data["upload_url"]
+
+            # STEP 2 upload image
             with open(path,"rb") as f:
 
-                files={
-                    "photo":("image.jpg",f,"image/jpeg")
-                }
+                requests.put(upload_url,data=f)
 
-                url=f"https://api.reverb.com/api/listings/{listing_id}/photos"
+        except Exception as e:
 
-                r=requests.post(url,headers=headers,files=files)
-
-                print(r.status_code,r.text)
-
-        except:
-            pass
+            print("UPLOAD ERROR:",e)
 
 
 if st.button("Clone Listing"):
