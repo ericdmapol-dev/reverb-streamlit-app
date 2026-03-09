@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - WITH PUBLISHING")
+st.title("🎸 Reverb Cloner PRO MAX - API CORRECT ENDPOINT")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -160,21 +160,23 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
     original_price = float(original_listing["price"]["amount"])
     new_price = round(original_price * price_multiplier, 2)
 
-    # Prepare payload
+    # Prepare payload - using correct Reverb API format
     payload = {
-        "title": original_listing.get("title", "No Title"),
-        "description": original_listing.get("description", ""),
-        "price": {
-            "amount": new_price,
-            "currency": original_listing["price"]["currency"]
-        },
-        "condition": {
-            "uuid": original_listing["condition"]["uuid"]
-        },
-        "make": make_name,
-        "model": model_name,
-        "shipping_profile_id": int(shipping_profile_id),
-        "state": "draft"  # Create as draft first
+        "listing": {
+            "title": original_listing.get("title", "No Title"),
+            "description": original_listing.get("description", ""),
+            "price": {
+                "amount": new_price,
+                "currency": original_listing["price"]["currency"]
+            },
+            "condition": {
+                "uuid": original_listing["condition"]["uuid"]
+            },
+            "make": make_name,
+            "model": model_name,
+            "shipping_profile_id": int(shipping_profile_id),
+            "state": "draft"
+        }
     }
 
     try:
@@ -204,6 +206,126 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         st.error(f"Connection error: {e}")
         return None
 
+def verify_listing_exists(api_key, listing_id):
+    """Verify that the listing exists and is accessible"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0"
+    }
+    
+    try:
+        response = requests.get(
+            f"{API_BASE}/listings/{listing_id}",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            return True
+        else:
+            st.write(f"Listing check: HTTP {response.status_code}")
+            return False
+    except Exception as e:
+        st.write(f"Error checking listing: {e}")
+        return False
+
+# ===== CORRECTED UPLOAD FUNCTION BASED ON REVERB API DOCS =====
+def upload_images(api_key, listing_id, image_paths):
+    """Upload images using correct Reverb API endpoint"""
+    if not image_paths:
+        st.warning("No images to upload")
+        return False
+    
+    # First, verify the listing exists
+    st.write("🔍 Verifying listing exists...")
+    if not verify_listing_exists(api_key, listing_id):
+        st.error("❌ Listing does not exist or is not accessible")
+        return False
+    
+    # Correct endpoint according to Reverb API documentation
+    upload_url = f"https://api.reverb.com/api/my/listings/{listing_id}/photos"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0",
+        # Don't set Content-Type for multipart uploads
+    }
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    successful_uploads = 0
+    
+    st.subheader("📤 Uploading Images")
+    st.write(f"Using endpoint: {upload_url}")
+    
+    for i, image_path in enumerate(image_paths):
+        status_text.text(f"Uploading image {i+1} of {len(image_paths)}")
+        
+        try:
+            if not os.path.exists(image_path):
+                st.warning(f"⚠️ Image file not found: {image_path}")
+                continue
+            
+            file_size = os.path.getsize(image_path)
+            if file_size == 0:
+                st.warning(f"⚠️ Image file is empty: {image_path}")
+                continue
+            
+            # Add delay between uploads
+            if i > 0:
+                time.sleep(3)
+            
+            # Prepare the file for upload
+            with open(image_path, "rb") as img_file:
+                files = {
+                    'file': (f'image_{i}.jpg', img_file, 'image/jpeg')
+                }
+                
+                # Make the upload request
+                upload_response = requests.post(
+                    upload_url,
+                    headers=headers,
+                    files=files,
+                    timeout=30
+                )
+            
+            # Check response
+            st.write(f"Image {i+1} - Status: {upload_response.status_code}")
+            
+            if upload_response.status_code in [200, 201, 202, 204]:
+                successful_uploads += 1
+                st.write(f"✅ Successfully uploaded image {i+1}")
+                
+                # Try to parse response
+                if upload_response.text:
+                    try:
+                        response_data = upload_response.json()
+                        st.write(f"Response: {json.dumps(response_data, indent=2)[:200]}")
+                    except:
+                        pass
+            else:
+                st.write(f"❌ Failed to upload image {i+1}")
+                if upload_response.text:
+                    try:
+                        error_data = upload_response.json()
+                        st.write(f"Error: {json.dumps(error_data, indent=2)}")
+                    except:
+                        st.write(f"Error text: {upload_response.text[:200]}")
+            
+        except requests.exceptions.Timeout:
+            st.warning(f"⏱️ Timeout uploading image {i+1}")
+        except requests.exceptions.RequestException as e:
+            st.warning(f"🌐 Network error: {str(e)}")
+        except Exception as e:
+            st.warning(f"❌ Error: {str(e)}")
+        
+        progress_bar.progress((i + 1) / len(image_paths))
+    
+    status_text.text(f"Upload complete! {successful_uploads}/{len(image_paths)} images uploaded")
+    progress_bar.empty()
+    
+    return successful_uploads > 0
+
 def publish_listing(api_key, listing_id):
     """Publish a draft listing"""
     headers = {
@@ -223,152 +345,13 @@ def publish_listing(api_key, listing_id):
             st.write(f"✅ Listing {listing_id} published successfully")
             return True
         else:
-            st.warning(f"Could not publish listing: {response.status_code} - {response.text}")
+            st.warning(f"Could not publish listing: {response.status_code}")
+            if response.text:
+                st.write(response.text[:200])
             return False
     except Exception as e:
         st.warning(f"Error publishing listing: {e}")
         return False
-
-def wait_for_listing_ready(api_key, listing_id, max_attempts=10):
-    """Wait for listing to be ready for image upload"""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
-    }
-    
-    st.write("⏳ Waiting for listing to be ready...")
-    
-    for attempt in range(max_attempts):
-        try:
-            response = requests.get(
-                f"{API_BASE}/listings/{listing_id}",
-                headers=headers,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                st.write(f"✅ Listing is ready (attempt {attempt+1})")
-                return True
-            else:
-                st.write(f"⏳ Listing not ready yet (attempt {attempt+1}, status: {response.status_code})")
-                
-        except:
-            st.write(f"⏳ Waiting... (attempt {attempt+1})")
-        
-        time.sleep(3)  # Wait 3 seconds between attempts
-    
-    st.warning("Listing did not become ready in time")
-    return False
-
-# ===== UPLOAD FUNCTION WITH RETRY =====
-def upload_images(api_key, listing_id, image_paths):
-    """Upload images to the new listing with retry logic"""
-    if not image_paths:
-        st.warning("No images to upload")
-        return False
-    
-    # First, wait for listing to be ready
-    if not wait_for_listing_ready(api_key, listing_id):
-        st.error("Listing is not ready for image upload")
-        return False
-    
-    # Try different endpoints
-    endpoints_to_try = [
-        f"https://api.reverb.com/api/listings/{listing_id}/photos",
-        f"https://api.reverb.com/api/listings/{listing_id}/images",
-        f"https://api.reverb.com/api/listings/{listing_id}/photos/upload",
-        f"https://api.reverb.com/api/listings/{listing_id}/images/upload"
-    ]
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0",
-    }
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    successful_uploads = 0
-    
-    st.subheader("📤 Uploading Images")
-    
-    # Find working endpoint
-    working_endpoint = None
-    for endpoint in endpoints_to_try:
-        try:
-            st.write(f"Testing endpoint: {endpoint}")
-            # Just test with headers, no file
-            test_response = requests.options(endpoint, headers=headers, timeout=5)
-            if test_response.status_code != 404:
-                working_endpoint = endpoint
-                st.write(f"✅ Found potential endpoint: {endpoint}")
-                break
-        except:
-            continue
-    
-    if not working_endpoint:
-        # Default to first endpoint
-        working_endpoint = endpoints_to_try[0]
-        st.write(f"📌 Using default endpoint: {working_endpoint}")
-    
-    # Upload images
-    for i, image_path in enumerate(image_paths):
-        status_text.text(f"Uploading image {i+1} of {len(image_paths)}")
-        
-        try:
-            if not os.path.exists(image_path):
-                st.warning(f"⚠️ Image file not found: {image_path}")
-                continue
-            
-            file_size = os.path.getsize(image_path)
-            if file_size == 0:
-                st.warning(f"⚠️ Image file is empty: {image_path}")
-                continue
-            
-            # Try multiple field names
-            field_names = ["photo", "file", "image", "upload"]
-            uploaded = False
-            
-            for field_name in field_names:
-                try:
-                    with open(image_path, "rb") as img_file:
-                        files = {
-                            field_name: (f"image_{i}.jpg", img_file, "image/jpeg")
-                        }
-                        
-                        # Add delay between uploads
-                        if i > 0:
-                            time.sleep(2)
-                        
-                        upload_response = requests.post(
-                            working_endpoint,
-                            headers=headers,
-                            files=files,
-                            timeout=30
-                        )
-                    
-                    if upload_response.status_code in [200, 201, 202, 204]:
-                        successful_uploads += 1
-                        st.write(f"✅ Uploaded image {i+1} (field: {field_name})")
-                        uploaded = True
-                        break
-                    else:
-                        st.write(f"Field '{field_name}': {upload_response.status_code}")
-                        
-                except Exception as e:
-                    st.write(f"Field '{field_name}' error: {str(e)[:50]}")
-            
-            if not uploaded:
-                st.warning(f"❌ Failed to upload image {i+1}")
-                
-        except Exception as e:
-            st.warning(f"Error with image {i+1}: {str(e)}")
-        
-        progress_bar.progress((i + 1) / len(image_paths))
-    
-    status_text.text(f"Upload complete! {successful_uploads}/{len(image_paths)} images uploaded")
-    progress_bar.empty()
-    
-    return successful_uploads > 0
 
 def cleanup_images(image_paths, keep_images=False):
     """Clean up downloaded images"""
@@ -408,13 +391,8 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.markdown("### ℹ️ Instructions")
-    st.markdown("""
-    1. Enter your Reverb API key
-    2. Enter your Shipping Profile ID
-    3. Paste the listing URL you want to clone
-    4. Click 'Start Cloning'
-    """)
+    st.markdown("### 🔑 API Endpoint Info")
+    st.markdown("Using: `/my/listings/{id}/photos`")
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -473,8 +451,9 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         
         st.success(f"✅ Created new draft listing with ID: {new_listing_id}")
         
-        # Wait a bit for the listing to be fully created
-        time.sleep(5)
+        # Wait longer for the listing to be fully created
+        st.write("⏳ Waiting 10 seconds for listing to be ready...")
+        time.sleep(10)
         
         # Upload images
         if image_paths:
@@ -503,4 +482,4 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers")
+st.markdown("Made with 🎸 for Reverb sellers | Using correct API endpoint: `/my/listings/{id}/photos`")
