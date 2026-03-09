@@ -3,10 +3,11 @@ import requests
 import os
 from pathlib import Path
 import time
+import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX")
+st.title("🎸 Reverb Cloner PRO MAX - FIXED")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -202,67 +203,93 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         st.error(f"Connection error: {e}")
         return None
 
+# ===== FIXED UPLOAD FUNCTION =====
 def upload_images(api_key, listing_id, image_paths):
-    """Upload images to the new listing"""
+    """Upload images to the new listing - FIXED VERSION"""
     if not image_paths:
         st.warning("No images to upload")
         return False
     
+    # Correct endpoint for Reverb API v3
+    upload_url = f"https://api.reverb.com/api/listings/{listing_id}/photos"
+    
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        # Don't set Content-Type here - let requests set it for multipart
     }
 
     progress_bar = st.progress(0)
     status_text = st.empty()
     successful_uploads = 0
     
+    st.subheader("📤 Uploading Images Debug")
+    
     for i, image_path in enumerate(image_paths):
         status_text.text(f"Uploading image {i+1} of {len(image_paths)}")
+        st.write(f"--- Uploading image {i+1}: {image_path} ---")
         
         try:
             # Check if file exists and has content
             if not os.path.exists(image_path):
-                st.warning(f"Image file not found: {image_path}")
+                st.warning(f"⚠️ Image file not found: {image_path}")
                 continue
                 
             file_size = os.path.getsize(image_path)
+            st.write(f"File size: {file_size} bytes")
+            
             if file_size == 0:
-                st.warning(f"Image file is empty: {image_path}")
+                st.warning(f"⚠️ Image file is empty: {image_path}")
                 continue
             
             # Open and upload image
             with open(image_path, "rb") as img_file:
+                # Prepare files for upload - correct format for Reverb API
                 files = {
-                    "file": (f"image_{i}.jpg", img_file, "image/jpeg")
+                    "photo": (f"image_{i}.jpg", img_file, "image/jpeg")
                 }
+                
+                st.write(f"Upload URL: {upload_url}")
                 
                 # Add delay between uploads to avoid rate limiting
                 if i > 0:
-                    time.sleep(1)
+                    time.sleep(2)
                 
+                # Make the upload request
                 upload_response = requests.post(
-                    f"https://api.reverb.com/api/listings/{listing_id}/images",
+                    upload_url,
                     headers=headers,
                     files=files,
                     timeout=30
                 )
             
             # Check upload result
-            if upload_response.status_code in [200, 201, 202]:
+            st.write(f"Response status: {upload_response.status_code}")
+            
+            if upload_response.status_code in [200, 201, 202, 204]:
                 successful_uploads += 1
-                st.write(f"✅ Uploaded image {i+1}")
-            else:
-                st.warning(f"Upload failed for image {i+1}: HTTP {upload_response.status_code}")
+                st.write(f"✅ SUCCESS: Uploaded image {i+1}")
                 if upload_response.text:
-                    st.write(f"Error details: {upload_response.text[:200]}")
+                    try:
+                        response_json = upload_response.json()
+                        st.write(f"Response: {json.dumps(response_json, indent=2)[:200]}")
+                    except:
+                        st.write(f"Response: {upload_response.text[:200]}")
+            else:
+                st.write(f"❌ FAILED: HTTP {upload_response.status_code}")
+                if upload_response.text:
+                    try:
+                        error_json = upload_response.json()
+                        st.write(f"Error details: {json.dumps(error_json, indent=2)}")
+                    except:
+                        st.write(f"Error details: {upload_response.text[:500]}")
             
         except requests.exceptions.Timeout:
-            st.warning(f"Timeout uploading image {i+1}")
+            st.warning(f"⏱️ Timeout uploading image {i+1}")
         except requests.exceptions.RequestException as e:
-            st.warning(f"Network error uploading image {i+1}: {str(e)}")
+            st.warning(f"🌐 Network error uploading image {i+1}: {str(e)}")
         except Exception as e:
-            st.warning(f"Error uploading image {i+1}: {str(e)}")
+            st.warning(f"❌ Error uploading image {i+1}: {str(e)}")
         
         progress_bar.progress((i + 1) / len(image_paths))
     
@@ -310,6 +337,10 @@ with st.sidebar:
     3. Paste the listing URL you want to clone
     4. Click 'Start Cloning'
     """)
+    
+    st.markdown("---")
+    st.markdown("### 🐛 Debug Info")
+    st.markdown("Fixed upload endpoint: `/api/listings/{id}/photos` with field name `photo`")
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
