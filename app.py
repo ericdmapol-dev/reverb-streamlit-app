@@ -19,7 +19,9 @@ def get_listing(api_key, listing_id):
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
 
     r = requests.get(
@@ -88,7 +90,8 @@ def create_listing(api_key, listing, shipping_profile_id):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
 
     make_name, model_name = safe_make_model(listing)
@@ -136,7 +139,9 @@ def upload_images(api_key, listing_id, paths):
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
 
     for path in paths:
@@ -148,6 +153,10 @@ def upload_images(api_key, listing_id, paths):
                 f"{API_BASE}/listings/{listing_id}/photos",
                 headers=headers
             )
+
+            if r.status_code not in [200,201]:
+                print("PHOTO SLOT ERROR:", r.text)
+                continue
 
             photo_data = r.json()
 
