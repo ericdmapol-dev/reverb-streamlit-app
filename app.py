@@ -2,12 +2,11 @@ import streamlit as st
 import requests
 import os
 
-st.title("Reverb Cloner PRO MAX")
-
 API_BASE = "https://api.reverb.com/api"
 
+st.title("Reverb Cloner PRO MAX")
 
-# استخراج ID من الرابط
+
 def extract_listing_id(url):
     try:
         part = url.split("/item/")[1]
@@ -16,7 +15,6 @@ def extract_listing_id(url):
         return None
 
 
-# جلب بيانات Listing
 def get_listing(api_key, listing_id):
 
     headers = {
@@ -24,9 +22,10 @@ def get_listing(api_key, listing_id):
         "Accept-Version": "3.0"
     }
 
-    url = f"{API_BASE}/listings/{listing_id}"
-
-    r = requests.get(url, headers=headers)
+    r = requests.get(
+        f"{API_BASE}/listings/{listing_id}",
+        headers=headers
+    )
 
     if r.status_code != 200:
         st.error(r.text)
@@ -35,7 +34,6 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-# معالجة make / model
 def safe_make_model(listing):
 
     make = listing.get("make")
@@ -56,7 +54,6 @@ def safe_make_model(listing):
     return make_name, model_name
 
 
-# تحميل الصور
 def download_images(listing):
 
     photos = listing.get("photos", [])
@@ -69,9 +66,9 @@ def download_images(listing):
 
         try:
 
-            url = photo["_links"]["full"]["href"]
+            img_url = photo["_links"]["full"]["href"]
 
-            img = requests.get(url).content
+            img = requests.get(img_url).content
 
             path = f"images/img{i}.jpg"
 
@@ -81,12 +78,11 @@ def download_images(listing):
             paths.append(path)
 
         except Exception as e:
-            print("DOWNLOAD ERROR", e)
+            print("DOWNLOAD ERROR:", e)
 
     return paths
 
 
-# إنشاء Listing جديد
 def create_listing(api_key, listing, shipping_profile_id):
 
     headers = {
@@ -136,7 +132,6 @@ def create_listing(api_key, listing, shipping_profile_id):
     return data["listing"]["id"]
 
 
-# رفع الصور
 def upload_images(api_key, listing_id, paths):
 
     headers = {
@@ -148,39 +143,31 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
-            # إنشاء photo slot
+            # create photo slot
             r = requests.post(
                 f"{API_BASE}/listings/{listing_id}/photos",
                 headers=headers
             )
 
-            if r.status_code != 201:
-                print("PHOTO SLOT ERROR", r.text)
-                continue
+            photo_data = r.json()
 
-            data = r.json()
+            upload_url = photo_data["_links"]["upload"]["href"]
 
-            upload_url = data["upload_url"]
-
-            with open(path, "rb") as f:
-
-                upload_headers = {
-                    "Content-Type": "image/jpeg"
-                }
+            with open(path, "rb") as img:
 
                 res = requests.put(
                     upload_url,
-                    data=f,
-                    headers=upload_headers
+                    data=img,
+                    headers={"Content-Type": "image/jpeg"}
                 )
 
-                print("UPLOAD STATUS", res.status_code)
+            print("UPLOAD STATUS:", res.status_code)
 
         except Exception as e:
-            print("UPLOAD ERROR", e)
+
+            print("UPLOAD ERROR:", e)
 
 
-# واجهة التطبيق
 api_key = st.text_input("API KEY")
 
 shipping_profile_id = st.text_input("Shipping Profile ID")
