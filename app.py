@@ -59,7 +59,6 @@ def safe_make_model(listing):
 def download_images(listing):
 
     photos = listing.get("photos", [])
-
     paths = []
 
     os.makedirs("images", exist_ok=True)
@@ -114,7 +113,6 @@ def create_listing(api_key, listing, shipping_profile_id):
         },
 
         "make": make_name,
-
         "model": model_name,
 
         "shipping_profile_id": int(shipping_profile_id)
@@ -140,7 +138,6 @@ def upload_images(api_key, listing_id, paths):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
-        "Content-Type": "application/json",
         "Accept": "application/json"
     }
 
@@ -152,20 +149,21 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
+            # create image slot
             r = requests.post(
-                f"{API_BASE}/listings/{listing_id}/photos",
+                f"{API_BASE}/listings/{listing_id}/images",
                 headers=headers
             )
 
-            st.write("Photo slot status:", r.status_code)
+            st.write("Image slot status:", r.status_code)
 
             if r.status_code not in [200, 201]:
                 st.write("Slot error:", r.text)
                 continue
 
-            photo_data = r.json()
+            image_data = r.json()
 
-            upload_url = photo_data["_links"]["upload"]["href"]
+            upload_url = image_data["_links"]["upload"]["href"]
 
             st.write("Upload URL received")
 
