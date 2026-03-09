@@ -80,7 +80,7 @@ def download_images(listing):
             paths.append(path)
 
         except Exception as e:
-            print("DOWNLOAD ERROR:", e)
+            st.write("DOWNLOAD ERROR:", e)
 
     return paths
 
@@ -144,23 +144,30 @@ def upload_images(api_key, listing_id, paths):
         "Accept": "application/json"
     }
 
+    st.subheader("Uploading Images Debug")
+
     for path in paths:
+
+        st.write("Uploading:", path)
 
         try:
 
-            # create photo slot
             r = requests.post(
                 f"{API_BASE}/listings/{listing_id}/photos",
                 headers=headers
             )
 
-            if r.status_code not in [200,201]:
-                print("PHOTO SLOT ERROR:", r.text)
+            st.write("Photo slot status:", r.status_code)
+
+            if r.status_code not in [200, 201]:
+                st.write("Slot error:", r.text)
                 continue
 
             photo_data = r.json()
 
             upload_url = photo_data["_links"]["upload"]["href"]
+
+            st.write("Upload URL received")
 
             with open(path, "rb") as img:
 
@@ -170,11 +177,11 @@ def upload_images(api_key, listing_id, paths):
                     headers={"Content-Type": "image/jpeg"}
                 )
 
-            print("UPLOAD STATUS:", res.status_code)
+            st.write("Upload result:", res.status_code)
 
         except Exception as e:
 
-            print("UPLOAD ERROR:", e)
+            st.write("Upload error:", e)
 
 
 api_key = st.text_input("API KEY")
