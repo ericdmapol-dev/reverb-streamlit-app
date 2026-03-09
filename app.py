@@ -133,12 +133,13 @@ def create_listing(api_key, listing, shipping_profile_id):
     return data["listing"]["id"]
 
 
+# ====== الدالة الجديدة التي طلبت ======
+
 def upload_images(api_key, listing_id, paths):
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0",
-        "Accept": "application/json"
+        "Accept-Version": "3.0"
     }
 
     st.subheader("Uploading Images Debug")
@@ -149,38 +150,29 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
-            # create image slot
-            r = requests.post(
-                f"{API_BASE}/listings/{listing_id}/images",
-                headers=headers
-            )
-
-            st.write("Image slot status:", r.status_code)
-
-            if r.status_code not in [200, 201]:
-                st.write("Slot error:", r.text)
-                continue
-
-            image_data = r.json()
-
-            upload_url = image_data["_links"]["upload"]["href"]
-
-            st.write("Upload URL received")
-
             with open(path, "rb") as img:
 
-                res = requests.put(
-                    upload_url,
-                    data=img,
-                    headers={"Content-Type": "image/jpeg"}
+                files = {
+                    "file": img
+                }
+
+                r = requests.post(
+                    f"https://api.reverb.com/api/listings/{listing_id}/images",
+                    headers=headers,
+                    files=files
                 )
 
-            st.write("Upload result:", res.status_code)
+            st.write("Upload status:", r.status_code)
+
+            if r.status_code not in [200, 201]:
+                st.write("Upload error:", r.text)
 
         except Exception as e:
 
-            st.write("Upload error:", e)
+            st.write("Upload exception:", e)
 
+
+# ===== واجهة Streamlit =====
 
 api_key = st.text_input("API KEY")
 
