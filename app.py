@@ -2,23 +2,21 @@ import streamlit as st
 import requests
 import os
 
-st.title("Reverb Cloner PRO")
+st.title("Reverb Cloner PRO MAX")
 
-api_key = st.text_input("API KEY")
-shipping_profile_id = st.text_input("Shipping Profile ID")
-listing_url = st.text_input("Listing URL")
+API_BASE = "https://api.reverb.com/api"
 
 
+# استخراج ID من الرابط
 def extract_listing_id(url):
-
     try:
         part = url.split("/item/")[1]
-        listing_id = part.split("-")[0]
-        return listing_id
+        return part.split("-")[0]
     except:
         return None
 
 
+# جلب بيانات Listing
 def get_listing(api_key, listing_id):
 
     headers = {
@@ -26,7 +24,7 @@ def get_listing(api_key, listing_id):
         "Accept-Version": "3.0"
     }
 
-    url = f"https://api.reverb.com/api/listings/{listing_id}"
+    url = f"{API_BASE}/listings/{listing_id}"
 
     r = requests.get(url, headers=headers)
 
@@ -37,7 +35,29 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-def download_images_from_api(listing):
+# معالجة make / model
+def safe_make_model(listing):
+
+    make = listing.get("make")
+    model = listing.get("model")
+
+    if isinstance(make, dict):
+        make_name = make.get("name", "Unknown")
+    elif isinstance(make, str):
+        make_name = make
+    else:
+        make_name = "Unknown"
+
+    if isinstance(model, str):
+        model_name = model
+    else:
+        model_name = "Unknown"
+
+    return make_name, model_name
+
+
+# تحميل الصور
+def download_images(listing):
 
     photos = listing.get("photos", [])
 
@@ -60,32 +80,13 @@ def download_images_from_api(listing):
 
             paths.append(path)
 
-        except:
-            pass
+        except Exception as e:
+            print("DOWNLOAD ERROR", e)
 
     return paths
 
 
-def safe_make_model(listing):
-
-    make = listing.get("make")
-    model = listing.get("model")
-
-    if isinstance(make, dict):
-        make_name = make.get("name", "Unknown")
-    elif isinstance(make, str):
-        make_name = make
-    else:
-        make_name = "Unknown"
-
-    if isinstance(model, str):
-        model_name = model
-    else:
-        model_name = "Unknown"
-
-    return make_name, model_name
-
-
+# إنشاء Listing جديد
 def create_listing(api_key, listing, shipping_profile_id):
 
     headers = {
@@ -94,14 +95,15 @@ def create_listing(api_key, listing, shipping_profile_id):
         "Content-Type": "application/json"
     }
 
-    price = float(listing["price"]["amount"]) * 0.70
-
     make_name, model_name = safe_make_model(listing)
+
+    price = float(listing["price"]["amount"]) * 0.70
 
     payload = {
 
-        "title": listing.get("title","No Title"),
-        "description": listing.get("description",""),
+        "title": listing.get("title", "No Title"),
+
+        "description": listing.get("description", ""),
 
         "price": {
             "amount": price,
@@ -113,13 +115,14 @@ def create_listing(api_key, listing, shipping_profile_id):
         },
 
         "make": make_name,
+
         "model": model_name,
 
         "shipping_profile_id": int(shipping_profile_id)
     }
 
     r = requests.post(
-        "https://api.reverb.com/api/listings",
+        f"{API_BASE}/listings",
         headers=headers,
         json=payload
     )
@@ -133,6 +136,7 @@ def create_listing(api_key, listing, shipping_profile_id):
     return data["listing"]["id"]
 
 
+# رفع الصور
 def upload_images(api_key, listing_id, paths):
 
     headers = {
@@ -144,38 +148,72 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
-            # create photo slot
+            # إنشاء photo slot
             r = requests.post(
-                f"https://api.reverb.com/api/listings/{listing_id}/photos",
+                f"{API_BASE}/listings/{listing_id}/photos",
                 headers=headers
             )
 
-            upload_url = r.json()["upload_url"]
+            if r.status_code != 201:
+                print("PHOTO SLOT ERROR", r.text)
+                continue
 
-            with open(path,"rb") as f:
+            data = r.json()
 
-                requests.put(upload_url,data=f)
+            upload_url = data["upload_url"]
 
-        except:
-            pass
+            with open(path, "rb") as f:
+
+                upload_headers = {
+                    "Content-Type": "image/jpeg"
+                }
+
+                res = requests.put(
+                    upload_url,
+                    data=f,
+                    headers=upload_headers
+                )
+
+                print("UPLOAD STATUS", res.status_code)
+
+        except Exception as e:
+            print("UPLOAD ERROR", e)
+
+
+# واجهة التطبيق
+api_key = st.text_input("API KEY")
+
+shipping_profile_id = st.text_input("Shipping Profile ID")
+
+listing_url = st.text_input("Listing URL")
 
 
 if st.button("Clone Listing"):
 
     listing_id = extract_listing_id(listing_url)
 
+    if not listing_id:
+        st.error("Invalid URL")
+        st.stop()
+
+    st.write("Listing ID:", listing_id)
+
     listing = get_listing(api_key, listing_id)
 
-    if listing:
+    if not listing:
+        st.stop()
 
-        paths = download_images_from_api(listing)
+    paths = download_images(listing)
 
-        st.write(paths)
+    st.write("Downloaded Images:", paths)
 
-        new_listing_id = create_listing(api_key, listing, shipping_profile_id)
+    new_listing_id = create_listing(api_key, listing, shipping_profile_id)
 
-        if new_listing_id:
+    if not new_listing_id:
+        st.stop()
 
-            upload_images(api_key, new_listing_id, paths)
+    st.write("New Listing ID:", new_listing_id)
 
-            st.success(f"Clone Done: {new_listing_id}")
+    upload_images(api_key, new_listing_id, paths)
+
+    st.success("Clone Completed!")
