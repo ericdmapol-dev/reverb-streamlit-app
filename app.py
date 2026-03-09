@@ -37,6 +37,28 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
+def safe_make_model(listing):
+
+    make = listing.get("make")
+    model = listing.get("model")
+
+    # MAKE
+    if isinstance(make, dict):
+        make_name = make.get("name","Unknown")
+    elif isinstance(make, str):
+        make_name = make
+    else:
+        make_name = "Unknown"
+
+    # MODEL
+    if isinstance(model,str):
+        model_name = model
+    else:
+        model_name = "Unknown"
+
+    return make_name, model_name
+
+
 def create_listing(api_key, listing, shipping_profile_id):
 
     headers = {
@@ -47,14 +69,10 @@ def create_listing(api_key, listing, shipping_profile_id):
 
     price = float(listing["price"]["amount"]) * 0.70
 
-    # معالجة make و model إذا كانوا غير موجودين
-    make = listing.get("make")
-    model = listing.get("model")
-
-    make_name = make["name"] if make else "Unknown"
-    model_name = model if model else "Unknown"
+    make_name, model_name = safe_make_model(listing)
 
     payload = {
+
         "title": listing.get("title","No Title"),
         "description": listing.get("description",""),
 
@@ -90,16 +108,14 @@ def create_listing(api_key, listing, shipping_profile_id):
 
 def download_images_from_page(listing_url):
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    headers = {"User-Agent":"Mozilla/5.0"}
 
-    r = requests.get(listing_url, headers=headers)
+    r = requests.get(listing_url,headers=headers)
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    soup = BeautifulSoup(r.text,"html.parser")
 
-    image_urls = []
-    paths = []
+    image_urls=[]
+    paths=[]
 
     for img in soup.find_all("img"):
 
@@ -110,18 +126,18 @@ def download_images_from_page(listing_url):
             if src not in image_urls:
                 image_urls.append(src)
 
-    os.makedirs("images", exist_ok=True)
+    os.makedirs("images",exist_ok=True)
 
-    for i, url in enumerate(image_urls):
+    for i,url in enumerate(image_urls):
 
         try:
 
-            img_data = requests.get(url).content
+            img = requests.get(url).content
 
             path = f"images/img{i}.jpg"
 
-            with open(path, "wb") as f:
-                f.write(img_data)
+            with open(path,"wb") as f:
+                f.write(img)
 
             paths.append(path)
 
@@ -141,15 +157,13 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
-            with open(path, "rb") as f:
+            with open(path,"rb") as f:
 
-                files = {
-                    "photo": f
-                }
+                files={"photo":f}
 
-                url = f"https://api.reverb.com/api/listings/{listing_id}/photos"
+                url=f"https://api.reverb.com/api/listings/{listing_id}/photos"
 
-                r = requests.post(url, headers=headers, files=files)
+                r=requests.post(url,headers=headers,files=files)
 
                 print(r.text)
 
@@ -165,17 +179,17 @@ if st.button("Clone Listing"):
         st.error("Invalid URL")
         st.stop()
 
-    listing = get_listing(api_key, listing_id)
+    listing = get_listing(api_key,listing_id)
 
     if listing:
 
-        new_listing_id = create_listing(api_key, listing, shipping_profile_id)
+        new_listing_id = create_listing(api_key,listing,shipping_profile_id)
 
         if new_listing_id:
 
             paths = download_images_from_page(listing_url)
 
             if paths:
-                upload_images(api_key, new_listing_id, paths)
+                upload_images(api_key,new_listing_id,paths)
 
             st.success(f"Clone Complete! Listing ID: {new_listing_id}")
