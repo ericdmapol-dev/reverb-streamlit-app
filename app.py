@@ -1,7 +1,8 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 import os
+import re
+from bs4 import BeautifulSoup
 
 st.title("Reverb Listing Cloner PRO")
 
@@ -42,7 +43,6 @@ def safe_make_model(listing):
     make = listing.get("make")
     model = listing.get("model")
 
-    # MAKE
     if isinstance(make, dict):
         make_name = make.get("name","Unknown")
     elif isinstance(make, str):
@@ -50,7 +50,6 @@ def safe_make_model(listing):
     else:
         make_name = "Unknown"
 
-    # MODEL
     if isinstance(model,str):
         model_name = model
     else:
@@ -106,33 +105,27 @@ def create_listing(api_key, listing, shipping_profile_id):
     return data["listing"]["id"]
 
 
-def download_images_from_page(listing_url):
+def download_images_from_page(url):
 
     headers = {"User-Agent":"Mozilla/5.0"}
 
-    r = requests.get(listing_url,headers=headers)
+    html = requests.get(url,headers=headers).text
 
-    soup = BeautifulSoup(r.text,"html.parser")
+    pattern = r'https://reverb-res\.cloudinary\.com/[^\"]+'
 
-    image_urls=[]
-    paths=[]
+    urls = re.findall(pattern, html)
 
-    for img in soup.find_all("img"):
+    urls = list(set(urls))
 
-        src = img.get("src")
-
-        if src and "reverb-res.cloudinary.com" in src:
-
-            if src not in image_urls:
-                image_urls.append(src)
+    paths = []
 
     os.makedirs("images",exist_ok=True)
 
-    for i,url in enumerate(image_urls):
+    for i,u in enumerate(urls):
 
         try:
 
-            img = requests.get(url).content
+            img = requests.get(u).content
 
             path = f"images/img{i}.jpg"
 
@@ -159,13 +152,15 @@ def upload_images(api_key, listing_id, paths):
 
             with open(path,"rb") as f:
 
-                files={"photo":f}
+                files={
+                    "photo":("image.jpg",f,"image/jpeg")
+                }
 
                 url=f"https://api.reverb.com/api/listings/{listing_id}/photos"
 
                 r=requests.post(url,headers=headers,files=files)
 
-                print(r.text)
+                print(r.status_code,r.text)
 
         except:
             pass
@@ -188,6 +183,8 @@ if st.button("Clone Listing"):
         if new_listing_id:
 
             paths = download_images_from_page(listing_url)
+
+            st.write(paths)
 
             if paths:
                 upload_images(api_key,new_listing_id,paths)
