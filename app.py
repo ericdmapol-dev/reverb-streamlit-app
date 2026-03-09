@@ -1,8 +1,9 @@
 import streamlit as st
 import requests
+from bs4 import BeautifulSoup
 import os
 
-st.title("Reverb Clone Tool Full")
+st.title("Reverb Listing Cloner")
 
 api_key = st.text_input("API Key")
 shipping_profile_id = st.text_input("Shipping Profile ID")
@@ -10,6 +11,7 @@ listing_url = st.text_input("Listing URL")
 
 
 def extract_listing_id(url):
+
     try:
         part = url.split("/item/")[1]
         listing_id = part.split("-")[0]
@@ -74,26 +76,40 @@ def create_listing(api_key, listing, shipping_profile_id):
     return data["listing"]["id"]
 
 
-def download_images(listing):
+def download_images_from_page(listing_url):
 
-    photos = listing.get("photos", [])
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
+    r = requests.get(listing_url, headers=headers)
+
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    image_urls = []
     paths = []
+
+    for img in soup.find_all("img"):
+
+        src = img.get("src")
+
+        if src and "reverb-res.cloudinary.com" in src:
+
+            if src not in image_urls:
+                image_urls.append(src)
 
     os.makedirs("images", exist_ok=True)
 
-    for i, photo in enumerate(photos):
+    for i, url in enumerate(image_urls):
 
         try:
 
-            url = photo["_links"]["large_crop"]["href"]
-
-            img = requests.get(url)
+            img_data = requests.get(url).content
 
             path = f"images/img{i}.jpg"
 
             with open(path, "wb") as f:
-                f.write(img.content)
+                f.write(img_data)
 
             paths.append(path)
 
@@ -143,8 +159,8 @@ if st.button("Clone Listing"):
 
         if new_listing_id:
 
-            paths = download_images(listing)
+            paths = download_images_from_page(listing_url)
 
             upload_images(api_key, new_listing_id, paths)
 
-            st.success(f"Clone complete! Listing ID: {new_listing_id}")
+            st.success(f"Clone Complete! New Listing ID: {new_listing_id}")
