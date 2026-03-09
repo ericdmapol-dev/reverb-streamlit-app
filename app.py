@@ -1,7 +1,8 @@
 import streamlit as st
 import requests
+import os
 
-st.title("Reverb Clone Tool")
+st.title("Reverb Clone Tool Full")
 
 api_key = st.text_input("API Key")
 shipping_profile_id = st.text_input("Shipping Profile ID")
@@ -9,7 +10,6 @@ listing_url = st.text_input("Listing URL")
 
 
 def extract_listing_id(url):
-
     try:
         part = url.split("/item/")[1]
         listing_id = part.split("-")[0]
@@ -44,82 +44,90 @@ def create_listing(api_key, listing, shipping_profile_id):
         "Content-Type": "application/json"
     }
 
-    try:
+    price = float(listing["price"]["amount"]) * 0.70
 
-        price = float(listing["price"]["amount"])
-        currency = listing["price"]["currency"]
+    payload = {
+        "title": listing["title"],
+        "description": listing["description"],
+        "price": {
+            "amount": price,
+            "currency": listing["price"]["currency"]
+        },
+        "condition": {
+            "uuid": listing["condition"]["uuid"]
+        },
+        "shipping_profile_id": int(shipping_profile_id)
+    }
 
-        price = price * 0.70
+    r = requests.post(
+        "https://api.reverb.com/api/listings",
+        headers=headers,
+        json=payload
+    )
 
-        payload = {
-            "title": listing["title"],
-            "description": listing["description"],
-            "price": {
-                "amount": price,
-                "currency": currency
-            },
-            "condition": {
-                "uuid": listing["condition"]["uuid"]
-            },
-            "shipping_profile_id": int(shipping_profile_id)
-        }
+    data = r.json()
 
-        r = requests.post(
-            "https://api.reverb.com/api/listings",
-            headers=headers,
-            json=payload
-        )
-
-        data = r.json()
-
-        if r.status_code not in [200, 201]:
-            st.error(data)
-            return None
-
-        if "listing" not in data:
-            st.error(data)
-            return None
-
-        return data["listing"]["id"]
-
-    except Exception as e:
-        st.error(str(e))
+    if "listing" not in data:
+        st.error(data)
         return None
 
+    return data["listing"]["id"]
 
-def upload_images(api_key, source_listing, new_listing_id):
+
+def download_images(listing):
+
+    photos = listing.get("photos", [])
+
+    paths = []
+
+    os.makedirs("images", exist_ok=True)
+
+    for i, photo in enumerate(photos):
+
+        try:
+
+            url = photo["_links"]["large_crop"]["href"]
+
+            img = requests.get(url)
+
+            path = f"images/img{i}.jpg"
+
+            with open(path, "wb") as f:
+                f.write(img.content)
+
+            paths.append(path)
+
+        except:
+            pass
+
+    return paths
+
+
+def upload_images(api_key, listing_id, paths):
 
     headers = {
         "Authorization": f"Bearer {api_key}"
     }
 
-    photos = source_listing.get("photos", [])
-
-    for photo in photos:
+    for path in paths:
 
         try:
 
-            img_url = photo["_links"]["large_crop"]["href"]
+            with open(path, "rb") as f:
 
-            img = requests.get(img_url)
+                files = {
+                    "file": f
+                }
 
-            files = {
-                "file": ("image.jpg", img.content)
-            }
+                url = f"https://api.reverb.com/api/listings/{listing_id}/images"
 
-            url = f"https://api.reverb.com/api/listings/{new_listing_id}/images"
-
-            requests.post(url, headers=headers, files=files)
+                requests.post(url, headers=headers, files=files)
 
         except:
             pass
 
 
 if st.button("Clone Listing"):
-
-    if not api_key or not shipping_profile_id or not listing_url:
-        st.error("Fill all fields")
-        st.stop()
 
     listing_id = extract_listing_id(listing_url)
 
@@ -135,6 +143,8 @@ if st.button("Clone Listing"):
 
         if new_listing_id:
 
-            upload_images(api_key, listing, new_listing_id)
+            paths = download_images(listing)
 
-            st.success(f"Listing cloned successfully! New ID: {new_listing_id}")
+            upload_images(api_key, new_listing_id, paths)
+
+            st.success(f"Clone complete! Listing ID: {new_listing_id}")
