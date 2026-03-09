@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - FIXED DATA")
+st.title("🎸 Reverb Cloner PRO MAX - WITH LOCALIZED CONTENTS")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -84,17 +84,6 @@ def extract_make_model(listing):
             model_name = model
         elif isinstance(model, (int, float)):
             model_name = str(model)
-    
-    # If still unknown, try to extract from title
-    if make_name == "Unknown" or model_name == "Unknown":
-        title = listing.get("title", "")
-        if title:
-            # Try to parse make and model from title
-            parts = title.split()
-            if len(parts) >= 2 and not make_name or make_name == "Unknown":
-                make_name = parts[0]
-            if len(parts) >= 2 and not model_name or model_name == "Unknown":
-                model_name = " ".join(parts[1:3]) if len(parts) > 2 else parts[1] if len(parts) > 1 else "Unknown"
     
     return make_name, model_name
 
@@ -173,7 +162,7 @@ def download_images(listing):
     return paths
 
 def create_listing(api_key, original_listing, shipping_profile_id, price_multiplier):
-    """Create new listing based on original with correct data"""
+    """Create new listing based on original with localized contents"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
@@ -198,12 +187,11 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         if isinstance(condition, dict):
             condition_uuid = condition.get("uuid")
         elif isinstance(condition, str):
-            # If it's a string, we need to fetch the UUID
             condition_uuid = condition
     
     if not condition_uuid:
         # Default condition (Good)
-        condition_uuid = "f5d1f1b0-3b3a-0133-9c5d-22000b7b5b1b"
+        condition_uuid = "df268ad1-c462-4ba6-b6db-e007e23922ea"
     
     # Get description
     description = original_listing.get("description", "")
@@ -215,7 +203,24 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
     if not title or title == "Unknown":
         title = f"{make_name} {model_name}".strip()
     
-    # Prepare payload - using correct Reverb API format
+    # Get finish if available
+    finish = original_listing.get("finish", "")
+    
+    # Get year if available
+    year = original_listing.get("year", "")
+    
+    # Prepare localized contents (REQUIRED by Reverb API)
+    localized_contents = {
+        "en": {  # English version
+            "title": title,
+            "description": description,
+            "make": make_name,
+            "model": model_name,
+            "finish": finish
+        }
+    }
+    
+    # Prepare payload - with localized_contents
     payload = {
         "listing": {
             "title": title,
@@ -229,8 +234,11 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
             },
             "make": make_name,
             "model": model_name,
+            "finish": finish,
+            "year": year,
             "shipping_profile_id": int(shipping_profile_id),
-            "state": "draft"
+            "state": "draft",
+            "localized_contents": localized_contents  # ADD THIS - IT'S REQUIRED!
         }
     }
     
@@ -242,7 +250,7 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
             f"{API_BASE}/listings",
             headers=headers,
             json=payload,
-            timeout=15
+            timeout=30
         )
 
         if response.status_code not in [200, 201]:
@@ -260,6 +268,12 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         elif "id" in data:
             return data["id"]
         else:
+            # Try to find ID in response
+            if isinstance(data, dict):
+                for key in ["listing_id", "listingId", "id"]:
+                    if key in data:
+                        return data[key]
+            
             st.error(f"Unexpected response format: {data}")
             return None
             
@@ -284,10 +298,8 @@ def verify_listing_exists(api_key, listing_id):
         if response.status_code == 200:
             return True
         else:
-            st.write(f"Listing check: HTTP {response.status_code}")
             return False
     except Exception as e:
-        st.write(f"Error checking listing: {e}")
         return False
 
 def upload_images(api_key, listing_id, image_paths):
@@ -332,7 +344,7 @@ def upload_images(api_key, listing_id, image_paths):
             
             # Add delay between uploads
             if i > 0:
-                time.sleep(3)
+                time.sleep(2)
             
             # Prepare the file for upload
             with open(image_path, "rb") as img_file:
@@ -349,15 +361,11 @@ def upload_images(api_key, listing_id, image_paths):
                 )
             
             # Check response
-            st.write(f"Image {i+1} - Status: {upload_response.status_code}")
-            
             if upload_response.status_code in [200, 201, 202, 204]:
                 successful_uploads += 1
                 st.write(f"✅ Successfully uploaded image {i+1}")
             else:
-                st.write(f"❌ Failed to upload image {i+1}")
-                if upload_response.text:
-                    st.write(f"Error: {upload_response.text[:200]}")
+                st.write(f"❌ Failed to upload image {i+1} - Status: {upload_response.status_code}")
             
         except Exception as e:
             st.warning(f"❌ Error: {str(e)}")
@@ -389,8 +397,6 @@ def publish_listing(api_key, listing_id):
             return True
         else:
             st.warning(f"Could not publish listing: {response.status_code}")
-            if response.text:
-                st.write(response.text[:200])
             return False
     except Exception as e:
         st.warning(f"Error publishing listing: {e}")
@@ -517,8 +523,9 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         st.success("🎉 Clone completed successfully!")
         
         # Show link to new listing
-        st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
+        if new_listing_id:
+            st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | Fixed data extraction")
+st.markdown("Made with 🎸 for Reverb sellers | Added localized_contents")
