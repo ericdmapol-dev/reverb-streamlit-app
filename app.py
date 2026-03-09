@@ -3,7 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 
-st.title("Reverb Listing Cloner")
+st.title("Reverb Listing Cloner PRO")
 
 api_key = st.text_input("API Key")
 shipping_profile_id = st.text_input("Shipping Profile ID")
@@ -47,9 +47,16 @@ def create_listing(api_key, listing, shipping_profile_id):
 
     price = float(listing["price"]["amount"]) * 0.70
 
+    # معالجة make و model إذا كانوا غير موجودين
+    make = listing.get("make")
+    model = listing.get("model")
+
+    make_name = make["name"] if make else "Unknown"
+    model_name = model if model else "Unknown"
+
     payload = {
-        "title": listing["title"],
-        "description": listing["description"],
+        "title": listing.get("title","No Title"),
+        "description": listing.get("description",""),
 
         "price": {
             "amount": price,
@@ -60,8 +67,8 @@ def create_listing(api_key, listing, shipping_profile_id):
             "uuid": listing["condition"]["uuid"]
         },
 
-        "make": listing["make"]["name"],
-        "model": listing["model"],
+        "make": make_name,
+        "model": model_name,
 
         "shipping_profile_id": int(shipping_profile_id)
     }
@@ -168,6 +175,7 @@ if st.button("Clone Listing"):
 
             paths = download_images_from_page(listing_url)
 
-            upload_images(api_key, new_listing_id, paths)
+            if paths:
+                upload_images(api_key, new_listing_id, paths)
 
-            st.success(f"Clone Complete! New Listing ID: {new_listing_id}")
+            st.success(f"Clone Complete! Listing ID: {new_listing_id}")
