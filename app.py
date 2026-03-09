@@ -11,7 +11,6 @@ listing_url = st.text_input("Listing URL")
 
 
 def extract_listing_id(url):
-
     try:
         part = url.split("/item/")[1]
         listing_id = part.split("-")[0]
@@ -51,13 +50,19 @@ def create_listing(api_key, listing, shipping_profile_id):
     payload = {
         "title": listing["title"],
         "description": listing["description"],
+
         "price": {
             "amount": price,
             "currency": listing["price"]["currency"]
         },
+
         "condition": {
             "uuid": listing["condition"]["uuid"]
         },
+
+        "make": listing["make"]["name"],
+        "model": listing["model"],
+
         "shipping_profile_id": int(shipping_profile_id)
     }
 
@@ -132,12 +137,14 @@ def upload_images(api_key, listing_id, paths):
             with open(path, "rb") as f:
 
                 files = {
-                    "file": f
+                    "photo": f
                 }
 
-                url = f"https://api.reverb.com/api/listings/{listing_id}/images"
+                url = f"https://api.reverb.com/api/listings/{listing_id}/photos"
 
-                requests.post(url, headers=headers, files=files)
+                r = requests.post(url, headers=headers, files=files)
+
+                print(r.text)
 
         except:
             pass
