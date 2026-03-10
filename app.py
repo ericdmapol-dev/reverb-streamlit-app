@@ -273,7 +273,7 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         return None
 
 def upload_images(api_key, listing_id, image_paths):
-    """Upload images to the listing - FINAL VERSION with manual upload option"""
+    """Upload images to the listing"""
     if not image_paths:
         st.warning("No images to upload")
         return False
@@ -291,7 +291,6 @@ def upload_images(api_key, listing_id, image_paths):
     
     if check_response.status_code != 200:
         st.error("❌ Cannot access the listing. It may not be ready yet.")
-        st.info("💡 Try waiting a bit longer or upload manually through the Reverb website.")
         return False
     
     st.write(f"✅ Listing verified, attempting to upload {len(image_paths)} images...")
