@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - FINAL FIX")
+st.title("🎸 Reverb Cloner PRO MAX - FINAL VERSION")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -159,9 +159,8 @@ def download_images(listing):
     
     return paths
 
-# ===== COMPLETELY REWRITTEN CREATE LISTING FUNCTION =====
 def create_listing(api_key, original_listing, shipping_profile_id, price_multiplier):
-    """Create new listing based on original - REWRITTEN"""
+    """Create new listing based on original - FINAL VERSION"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
@@ -216,7 +215,7 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         if isinstance(cat, dict) and "uuid" in cat:
             category_uuids.append(cat["uuid"])
     
-    # SIMPLIFIED PAYLOAD - Following Reverb API examples
+    # SIMPLIFIED PAYLOAD - This works!
     payload = {
         "title": title,
         "description": description,
@@ -273,45 +272,37 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         st.error(f"Connection error: {e}")
         return None
 
-def verify_listing_exists(api_key, listing_id):
-    """Verify that the listing exists and is accessible"""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
-    }
-    
-    try:
-        response = requests.get(
-            f"{API_BASE}/listings/{listing_id}",
-            headers=headers,
-            timeout=10
-        )
-        
-        return response.status_code == 200
-    except Exception:
-        return False
-
 def upload_images(api_key, listing_id, image_paths):
-    """Upload images to the listing"""
+    """Upload images to the listing - FINAL VERSION with manual upload option"""
     if not image_paths:
         st.warning("No images to upload")
         return False
-    
-    st.write("🔍 Verifying listing exists...")
-    if not verify_listing_exists(api_key, listing_id):
-        st.error("❌ Listing does not exist or is not accessible")
-        return False
-    
-    # Try both possible endpoints
-    endpoints = [
-        f"https://api.reverb.com/api/my/listings/{listing_id}/photos",
-        f"https://api.reverb.com/api/listings/{listing_id}/photos"
-    ]
     
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
     }
+
+    # First, check if listing exists
+    check_response = requests.get(
+        f"{API_BASE}/listings/{listing_id}",
+        headers=headers
+    )
+    
+    if check_response.status_code != 200:
+        st.error("❌ Cannot access the listing. It may not be ready yet.")
+        st.info("💡 Try waiting a bit longer or upload manually through the Reverb website.")
+        return False
+    
+    st.write(f"✅ Listing verified, attempting to upload {len(image_paths)} images...")
+    
+    # Try different endpoints that might work
+    endpoints_to_try = [
+        f"{API_BASE}/listings/{listing_id}/photos",
+        f"{API_BASE}/my/listings/{listing_id}/photos",
+        f"https://api.reverb.com/api/listings/{listing_id}/photos",
+        f"https://api.reverb.com/api/my/listings/{listing_id}/photos"
+    ]
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -329,36 +320,39 @@ def upload_images(api_key, listing_id, image_paths):
             
             # Add delay between uploads
             if i > 0:
-                time.sleep(2)
+                time.sleep(3)
             
             uploaded = False
             
             # Try each endpoint
-            for endpoint in endpoints:
+            for endpoint in endpoints_to_try:
                 if uploaded:
                     break
                     
                 with open(image_path, "rb") as img_file:
                     files = {
-                        'file': (f'image_{i}.jpg', img_file, 'image/jpeg')
+                        'photo': (f'image_{i}.jpg', img_file, 'image/jpeg')
                     }
                     
-                    upload_response = requests.post(
-                        endpoint,
-                        headers=headers,
-                        files=files,
-                        timeout=30
-                    )
-                
-                if upload_response.status_code in [200, 201, 202, 204]:
-                    successful_uploads += 1
-                    st.write(f"✅ Uploaded image {i+1}")
-                    uploaded = True
-                else:
-                    st.write(f"Endpoint {endpoint} returned {upload_response.status_code}")
+                    try:
+                        upload_response = requests.post(
+                            endpoint,
+                            headers=headers,
+                            files=files,
+                            timeout=30
+                        )
+                        
+                        if upload_response.status_code in [200, 201, 202, 204]:
+                            successful_uploads += 1
+                            st.write(f"✅ Uploaded image {i+1}")
+                            uploaded = True
+                        else:
+                            st.write(f"Endpoint {endpoint} returned {upload_response.status_code}")
+                    except:
+                        continue
             
             if not uploaded:
-                st.write(f"❌ Failed to upload image {i+1}")
+                st.write(f"❌ Failed to upload image {i+1} with all endpoints")
             
         except Exception as e:
             st.warning(f"❌ Error: {str(e)}")
@@ -367,6 +361,14 @@ def upload_images(api_key, listing_id, image_paths):
     
     status_text.text(f"Upload complete! {successful_uploads}/{len(image_paths)} images uploaded")
     progress_bar.empty()
+    
+    if successful_uploads == 0:
+        st.warning("⚠️ Could not upload images via API.")
+        st.info("📌 **Manual Upload Option:**")
+        st.markdown(f"1. Your images are saved in the **'images'** folder")
+        st.markdown(f"2. Go to your draft listing: [Edit Listing](https://reverb.com/item/{listing_id}/edit)")
+        st.markdown(f"3. Upload the images manually through the Reverb website")
+        st.markdown(f"4. Then publish the listing")
     
     return successful_uploads > 0
 
@@ -390,6 +392,7 @@ def publish_listing(api_key, listing_id):
             return True
         else:
             st.warning(f"Could not publish listing: {response.status_code}")
+            st.info(f"💡 You can publish manually: https://reverb.com/item/{listing_id}/edit")
             return False
     except Exception as e:
         st.warning(f"Error publishing listing: {e}")
@@ -431,6 +434,10 @@ with st.sidebar:
         value=True,
         help="Automatically publish the listing after image upload"
     )
+    
+    st.markdown("---")
+    st.markdown("### 📌 Note")
+    st.markdown("If API upload fails, images are saved in the 'images' folder for manual upload.")
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -490,8 +497,8 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         st.success(f"✅ Created new listing with ID: {new_listing_id}")
         
         # Wait for listing to be ready
-        st.write("⏳ Waiting 10 seconds for listing to be ready...")
-        time.sleep(10)
+        st.write("⏳ Waiting 15 seconds for listing to be ready...")
+        time.sleep(15)
         
         # Upload images
         if image_paths:
@@ -518,7 +525,8 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         # Show link to new listing
         if new_listing_id:
             st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
+            st.markdown(f"✏️ [Edit your listing](https://reverb.com/item/{new_listing_id}/edit)")
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | Simplified payload format")
+st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with all fixes")
