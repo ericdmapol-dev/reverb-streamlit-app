@@ -76,9 +76,23 @@ def download_images(listing):
 
         except:
 
-            st.warning("Failed to download image")
+            st.warning("Image failed")
 
     return paths
+
+
+# ---------------- EXTRACT CATEGORY ----------------
+
+def extract_categories(listing):
+
+    categories = []
+
+    for cat in listing.get("categories", []):
+
+        if "uuid" in cat:
+            categories.append(cat["uuid"])
+
+    return categories
 
 
 # ---------------- CREATE LISTING ----------------
@@ -94,11 +108,13 @@ def create_listing(api_key, listing, shipping_profile):
     if isinstance(model, dict):
         model = model.get("name")
 
+    categories = extract_categories(listing)
+
     payload = {
 
         "title": listing["title"],
 
-        "description": listing.get("description", ""),
+        "description": listing.get("description",""),
 
         "price": {
             "amount": float(listing["price"]["amount"]),
@@ -112,25 +128,24 @@ def create_listing(api_key, listing, shipping_profile):
         "make": make,
         "model": model,
 
-        "finish": listing.get("finish", ""),
+        "finish": listing.get("finish",""),
 
-        "year": listing.get("year", ""),
+        "year": listing.get("year",""),
 
         "shipping_profile_id": int(shipping_profile),
+
+        "category_uuids": categories,
 
         "state": "draft"
     }
 
     r = requests.post(
-
         f"{API_BASE}/listings",
-
         headers=get_headers(api_key),
-
         json=payload
     )
 
-    if r.status_code not in [200, 201]:
+    if r.status_code not in [200,201]:
 
         st.error(r.text)
         return None
@@ -156,28 +171,28 @@ def upload_images(api_key, listing_id, paths):
 
         try:
 
-            with open(path, "rb") as img:
+            with open(path,"rb") as img:
 
                 files = {
-                    "file": ("image.jpg", img, "image/jpeg")
+                    "image": ("photo.jpg", img, "image/jpeg")
                 }
 
                 r = requests.post(
-                    f"https://api.reverb.com/api/listings/{listing_id}/images",
+                    f"{API_BASE}/listings/{listing_id}/images",
                     headers=headers,
                     files=files
                 )
 
             st.write("Status:", r.status_code)
 
-            if r.status_code in [200, 201]:
+            if r.status_code in [200,201]:
 
                 success += 1
                 st.success("Uploaded")
 
             else:
 
-                st.error(r.text)
+                st.write(r.text)
 
         except Exception as e:
 
@@ -197,7 +212,7 @@ def publish_listing(api_key, listing_id):
         headers=get_headers(api_key)
     )
 
-    if r.status_code in [200, 201, 204]:
+    if r.status_code in [200,201,204]:
 
         st.success("Listing Published")
 
@@ -208,8 +223,7 @@ def publish_listing(api_key, listing_id):
 
 # ---------------- STREAMLIT UI ----------------
 
-st.title("Reverb Listing Cloner")
-
+st.title("Reverb Listing Cloner PRO")
 
 api_key = st.text_input("API KEY", type="password")
 
@@ -241,9 +255,9 @@ if st.button("CLONE LISTING"):
 
     st.success(f"New Listing ID: {new_id}")
 
-    st.write("Waiting 40 seconds for listing to be ready")
+    st.write("Waiting 45 seconds for listing to be ready")
 
-    time.sleep(40)
+    time.sleep(45)
 
     upload_images(api_key, new_id, paths)
 
