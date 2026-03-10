@@ -6,26 +6,27 @@ from pathlib import Path
 
 API_BASE = "https://api.reverb.com/api"
 
-# ================= HEADERS =================
+
+# ---------------- HEADERS ----------------
 
 def headers(api_key):
     return {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0",
-        "Accept": "application/json"
+        "Accept-Version": "3.0"
     }
 
-# ================= EXTRACT LISTING ID =================
 
-def extract_listing_id(url):
+# ---------------- EXTRACT LISTING ID ----------------
+
+def get_listing_id(url):
 
     if "/item/" in url:
         return url.split("/item/")[1].split("-")[0]
 
-    return None
+    return url
 
 
-# ================= GET LISTING =================
+# ---------------- GET LISTING ----------------
 
 def get_listing(api_key, listing_id):
 
@@ -41,16 +42,13 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-# ================= DOWNLOAD IMAGES =================
+# ---------------- DOWNLOAD IMAGES ----------------
 
 def download_images(listing):
 
-    photos = listing.get("photos", [])
-
-    if not photos:
-        return []
-
     Path("images").mkdir(exist_ok=True)
+
+    photos = listing.get("photos", [])
 
     paths = []
 
@@ -58,9 +56,9 @@ def download_images(listing):
 
         try:
 
-            img_url = photo["_links"]["full"]["href"]
+            url = photo["_links"]["full"]["href"]
 
-            img = requests.get(img_url).content
+            img = requests.get(url).content
 
             path = f"images/img{i}.jpg"
 
@@ -69,20 +67,21 @@ def download_images(listing):
 
             paths.append(path)
 
-            st.write("Downloaded", path)
+            st.success(f"Downloaded {path}")
 
         except:
-            st.warning("image error")
+
+            st.warning("Image skipped")
 
     return paths
 
 
-# ================= CREATE LISTING =================
+# ---------------- CREATE LISTING ----------------
 
-def create_listing(api_key, listing, shipping_profile_id):
+def create_listing(api_key, listing, shipping_profile):
 
-    make = listing["make"]
-    model = listing["model"]
+    make = listing.get("make")
+    model = listing.get("model")
 
     if isinstance(make, dict):
         make = make["name"]
@@ -94,10 +93,10 @@ def create_listing(api_key, listing, shipping_profile_id):
 
         "title": listing["title"],
 
-        "description": listing["description"],
+        "description": listing.get("description", ""),
 
         "price": {
-            "amount": listing["price"]["amount"],
+            "amount": float(listing["price"]["amount"]),
             "currency": "USD"
         },
 
@@ -108,114 +107,110 @@ def create_listing(api_key, listing, shipping_profile_id):
         "make": make,
         "model": model,
 
-        "finish": listing.get("finish",""),
-        "year": listing.get("year",""),
+        "finish": listing.get("finish", ""),
 
-        "shipping_profile_id": int(shipping_profile_id),
+        "year": listing.get("year", ""),
+
+        "shipping_profile_id": int(shipping_profile),
 
         "state": "draft"
     }
 
     r = requests.post(
+
         f"{API_BASE}/listings",
+
         headers=headers(api_key),
+
         json=payload
     )
 
-    if r.status_code not in [200,201]:
+    if r.status_code not in [200, 201]:
+
         st.error(r.text)
         return None
 
-    return r.json()["listing"]["id"]
+    new_id = r.json()["listing"]["id"]
+
+    return new_id
 
 
-# ================= REQUEST IMAGE SLOT =================
-
-def request_image_slot(api_key, listing_id):
-
-    r = requests.post(
-        f"{API_BASE}/listings/{listing_id}/images",
-        headers=headers(api_key)
-    )
-
-    if r.status_code != 201:
-        st.error("Slot error")
-        st.write(r.text)
-        return None
-
-    return r.json()
-
-
-# ================= UPLOAD IMAGE =================
-
-def upload_image(upload_url, path):
-
-    with open(path,"rb") as img:
-
-        r = requests.put(
-            upload_url,
-            data=img,
-            headers={"Content-Type":"image/jpeg"}
-        )
-
-    return r.status_code in [200,201]
-
-
-# ================= UPLOAD IMAGES =================
+# ---------------- UPLOAD IMAGES ----------------
 
 def upload_images(api_key, listing_id, paths):
 
     success = 0
 
-    for p in paths:
+    for path in paths:
 
-        st.write("Uploading", p)
+        st.write("Uploading", path)
 
-        slot = request_image_slot(api_key, listing_id)
+        with open(path, "rb") as img:
 
-        if not slot:
-            continue
+            files = {
+                "photo": img
+            }
 
-        upload_url = slot["upload_url"]
+            r = requests.post(
 
-        ok = upload_image(upload_url, p)
+                f"{API_BASE}/listings/{listing_id}/photos",
 
-        if ok:
+                headers=headers(api_key),
+
+                files=files
+            )
+
+        st.write("Status:", r.status_code)
+
+        if r.status_code in [200, 201]:
+
             success += 1
             st.success("Uploaded")
-        else:
-            st.error("Upload failed")
 
-        time.sleep(2)
+        else:
+
+            st.error(r.text)
+
+        time.sleep(1)
 
     st.write("Uploaded", success, "/", len(paths))
 
 
-# ================= PUBLISH =================
+# ---------------- PUBLISH ----------------
 
 def publish_listing(api_key, listing_id):
 
     r = requests.put(
+
         f"{API_BASE}/listings/{listing_id}/publish",
+
         headers=headers(api_key)
+
     )
 
-    return r.status_code in [200,201,204]
+    if r.status_code in [200, 201, 204]:
+
+        st.success("Listing published")
+
+    else:
+
+        st.warning("Publish failed")
 
 
-# ================= STREAMLIT UI =================
+# ---------------- STREAMLIT ----------------
 
-st.title("🎸 Reverb Cloner PRO MAX")
+st.title("Reverb Listing Cloner")
 
-api_key = st.text_input("API Key", type="password")
+api_key = st.text_input("API KEY", type="password")
 
-shipping_profile_id = st.text_input("Shipping Profile ID")
+shipping_profile = st.text_input("Shipping Profile ID")
 
-url = st.text_input("Listing URL")
+listing_url = st.text_input("Listing URL")
 
-if st.button("Clone Listing"):
 
-    listing_id = extract_listing_id(url)
+if st.button("CLONE LISTING"):
+
+    listing_id = get_listing_id(listing_url)
 
     st.write("Listing ID:", listing_id)
 
@@ -232,9 +227,9 @@ if st.button("Clone Listing"):
 
     st.write("Creating listing")
 
-    new_id = create_listing(api_key, listing, shipping_profile_id)
+    new_id = create_listing(api_key, listing, shipping_profile)
 
-    st.success("New Listing ID: " + str(new_id))
+    st.success(f"New Listing ID: {new_id}")
 
     st.write("Waiting 25 seconds")
 
