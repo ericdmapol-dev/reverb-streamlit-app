@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - WITH LOCALIZED CONTENTS")
+st.title("🎸 Reverb Cloner PRO MAX - FINAL FIX")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -63,7 +63,6 @@ def extract_make_model(listing):
         if isinstance(make, dict):
             make_name = make.get("name", "Unknown")
             if not make_name or make_name == "Unknown":
-                # Try to get from string representation
                 make_name = str(make.get("_id", "Unknown"))
         elif isinstance(make, str):
             make_name = make
@@ -78,7 +77,6 @@ def extract_make_model(listing):
         if isinstance(model, dict):
             model_name = model.get("name", "Unknown")
             if not model_name or model_name == "Unknown":
-                # Try to get from string representation
                 model_name = str(model.get("_id", "Unknown"))
         elif isinstance(model, str):
             model_name = model
@@ -161,8 +159,9 @@ def download_images(listing):
     
     return paths
 
+# ===== COMPLETELY REWRITTEN CREATE LISTING FUNCTION =====
 def create_listing(api_key, original_listing, shipping_profile_id, price_multiplier):
-    """Create new listing based on original with localized contents"""
+    """Create new listing based on original - REWRITTEN"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
@@ -179,6 +178,7 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
     # Calculate new price
     original_price = float(original_listing["price"]["amount"])
     new_price = round(original_price * price_multiplier, 2)
+    new_price_cents = int(new_price * 100)
 
     # Get condition UUID
     condition_uuid = None
@@ -209,38 +209,36 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
     # Get year if available
     year = original_listing.get("year", "")
     
-    # Prepare localized contents (REQUIRED by Reverb API)
-    localized_contents = {
-        "en": {  # English version
-            "title": title,
-            "description": description,
-            "make": make_name,
-            "model": model_name,
-            "finish": finish
-        }
+    # Get categories if available
+    categories = original_listing.get("categories", [])
+    category_uuids = []
+    for cat in categories:
+        if isinstance(cat, dict) and "uuid" in cat:
+            category_uuids.append(cat["uuid"])
+    
+    # SIMPLIFIED PAYLOAD - Following Reverb API examples
+    payload = {
+        "title": title,
+        "description": description,
+        "price": {
+            "amount": new_price,
+            "amount_cents": new_price_cents,
+            "currency": original_listing["price"]["currency"]
+        },
+        "condition": {
+            "uuid": condition_uuid
+        },
+        "make": make_name,
+        "model": model_name,
+        "finish": finish,
+        "year": year,
+        "shipping_profile_id": int(shipping_profile_id),
+        "state": "draft"
     }
     
-    # Prepare payload - with localized_contents
-    payload = {
-        "listing": {
-            "title": title,
-            "description": description,
-            "price": {
-                "amount": new_price,
-                "currency": original_listing["price"]["currency"]
-            },
-            "condition": {
-                "uuid": condition_uuid
-            },
-            "make": make_name,
-            "model": model_name,
-            "finish": finish,
-            "year": year,
-            "shipping_profile_id": int(shipping_profile_id),
-            "state": "draft",
-            "localized_contents": localized_contents  # ADD THIS - IT'S REQUIRED!
-        }
-    }
+    # Add categories if available
+    if category_uuids:
+        payload["category_uuids"] = category_uuids
     
     st.write("Sending payload:")
     st.json(payload)
@@ -262,20 +260,14 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         st.write("Response from API:")
         st.json(data)
 
-        # Handle different response formats
-        if "listing" in data:
-            return data["listing"]["id"]
-        elif "id" in data:
-            return data["id"]
-        else:
-            # Try to find ID in response
-            if isinstance(data, dict):
-                for key in ["listing_id", "listingId", "id"]:
-                    if key in data:
-                        return data[key]
-            
-            st.error(f"Unexpected response format: {data}")
-            return None
+        # Extract listing ID from response
+        if isinstance(data, dict):
+            if "listing" in data and isinstance(data["listing"], dict):
+                return data["listing"].get("id")
+            elif "id" in data:
+                return data["id"]
+        
+        return None
             
     except Exception as e:
         st.error(f"Connection error: {e}")
@@ -295,11 +287,8 @@ def verify_listing_exists(api_key, listing_id):
             timeout=10
         )
         
-        if response.status_code == 200:
-            return True
-        else:
-            return False
-    except Exception as e:
+        return response.status_code == 200
+    except Exception:
         return False
 
 def upload_images(api_key, listing_id, image_paths):
@@ -308,14 +297,16 @@ def upload_images(api_key, listing_id, image_paths):
         st.warning("No images to upload")
         return False
     
-    # First, verify the listing exists
     st.write("🔍 Verifying listing exists...")
     if not verify_listing_exists(api_key, listing_id):
         st.error("❌ Listing does not exist or is not accessible")
         return False
     
-    # Correct endpoint according to Reverb API documentation
-    upload_url = f"https://api.reverb.com/api/my/listings/{listing_id}/photos"
+    # Try both possible endpoints
+    endpoints = [
+        f"https://api.reverb.com/api/my/listings/{listing_id}/photos",
+        f"https://api.reverb.com/api/listings/{listing_id}/photos"
+    ]
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -327,45 +318,47 @@ def upload_images(api_key, listing_id, image_paths):
     successful_uploads = 0
     
     st.subheader("📤 Uploading Images")
-    st.write(f"Using endpoint: {upload_url}")
     
     for i, image_path in enumerate(image_paths):
         status_text.text(f"Uploading image {i+1} of {len(image_paths)}")
         
         try:
-            if not os.path.exists(image_path):
-                st.warning(f"⚠️ Image file not found: {image_path}")
-                continue
-            
-            file_size = os.path.getsize(image_path)
-            if file_size == 0:
-                st.warning(f"⚠️ Image file is empty: {image_path}")
+            if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
+                st.warning(f"⚠️ Invalid image file: {image_path}")
                 continue
             
             # Add delay between uploads
             if i > 0:
                 time.sleep(2)
             
-            # Prepare the file for upload
-            with open(image_path, "rb") as img_file:
-                files = {
-                    'file': (f'image_{i}.jpg', img_file, 'image/jpeg')
-                }
-                
-                # Make the upload request
-                upload_response = requests.post(
-                    upload_url,
-                    headers=headers,
-                    files=files,
-                    timeout=30
-                )
+            uploaded = False
             
-            # Check response
-            if upload_response.status_code in [200, 201, 202, 204]:
-                successful_uploads += 1
-                st.write(f"✅ Successfully uploaded image {i+1}")
-            else:
-                st.write(f"❌ Failed to upload image {i+1} - Status: {upload_response.status_code}")
+            # Try each endpoint
+            for endpoint in endpoints:
+                if uploaded:
+                    break
+                    
+                with open(image_path, "rb") as img_file:
+                    files = {
+                        'file': (f'image_{i}.jpg', img_file, 'image/jpeg')
+                    }
+                    
+                    upload_response = requests.post(
+                        endpoint,
+                        headers=headers,
+                        files=files,
+                        timeout=30
+                    )
+                
+                if upload_response.status_code in [200, 201, 202, 204]:
+                    successful_uploads += 1
+                    st.write(f"✅ Uploaded image {i+1}")
+                    uploaded = True
+                else:
+                    st.write(f"Endpoint {endpoint} returned {upload_response.status_code}")
+            
+            if not uploaded:
+                st.write(f"❌ Failed to upload image {i+1}")
             
         except Exception as e:
             st.warning(f"❌ Error: {str(e)}")
@@ -485,8 +478,8 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         image_paths = download_images(original_listing)
         st.success(f"✅ Downloaded {len(image_paths)} images")
         
-        # Create new listing (as draft)
-        st.info("📝 Creating new listing (draft)...")
+        # Create new listing
+        st.info("📝 Creating new listing...")
         new_listing_id = create_listing(api_key, original_listing, shipping_profile_id, price_multiplier)
         
         if not new_listing_id:
@@ -494,9 +487,9 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
             cleanup_images(image_paths, keep_images=True)
             st.stop()
         
-        st.success(f"✅ Created new draft listing with ID: {new_listing_id}")
+        st.success(f"✅ Created new listing with ID: {new_listing_id}")
         
-        # Wait longer for the listing to be fully created
+        # Wait for listing to be ready
         st.write("⏳ Waiting 10 seconds for listing to be ready...")
         time.sleep(10)
         
@@ -528,4 +521,4 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | Added localized_contents")
+st.markdown("Made with 🎸 for Reverb sellers | Simplified payload format")
