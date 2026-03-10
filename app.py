@@ -1,29 +1,30 @@
 import streamlit as st
 import requests
-import os
 import time
-from pathlib import Path
+import os
 
 API_BASE = "https://api.reverb.com/api"
 
 
 # ---------------- HEADERS ----------------
 
-def headers(api_key):
+def get_headers(api_key):
+
     return {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        "Accept": "application/json"
     }
 
 
 # ---------------- EXTRACT LISTING ID ----------------
 
-def get_listing_id(url):
+def extract_listing_id(url):
 
     if "/item/" in url:
         return url.split("/item/")[1].split("-")[0]
 
-    return url
+    return url.strip()
 
 
 # ---------------- GET LISTING ----------------
@@ -32,7 +33,7 @@ def get_listing(api_key, listing_id):
 
     r = requests.get(
         f"{API_BASE}/listings/{listing_id}",
-        headers=headers(api_key)
+        headers=get_headers(api_key)
     )
 
     if r.status_code != 200:
@@ -46,9 +47,13 @@ def get_listing(api_key, listing_id):
 
 def download_images(listing):
 
-    Path("images").mkdir(exist_ok=True)
-
     photos = listing.get("photos", [])
+
+    if not photos:
+        st.warning("No photos found")
+        return []
+
+    os.makedirs("images", exist_ok=True)
 
     paths = []
 
@@ -65,13 +70,13 @@ def download_images(listing):
             with open(path, "wb") as f:
                 f.write(img)
 
-            paths.append(path)
-
             st.success(f"Downloaded {path}")
+
+            paths.append(path)
 
         except:
 
-            st.warning("Image skipped")
+            st.warning("Failed to download image")
 
     return paths
 
@@ -84,10 +89,10 @@ def create_listing(api_key, listing, shipping_profile):
     model = listing.get("model")
 
     if isinstance(make, dict):
-        make = make["name"]
+        make = make.get("name")
 
     if isinstance(model, dict):
-        model = model["name"]
+        model = model.get("name")
 
     payload = {
 
@@ -120,7 +125,7 @@ def create_listing(api_key, listing, shipping_profile):
 
         f"{API_BASE}/listings",
 
-        headers=headers(api_key),
+        headers=get_headers(api_key),
 
         json=payload
     )
@@ -139,39 +144,46 @@ def create_listing(api_key, listing, shipping_profile):
 
 def upload_images(api_key, listing_id, paths):
 
+    headers = get_headers(api_key)
+
     success = 0
+
+    st.subheader("Uploading Images")
 
     for path in paths:
 
         st.write("Uploading", path)
 
-        with open(path, "rb") as img:
+        try:
 
-            files = {
-                "photo": img
-            }
+            with open(path, "rb") as img:
 
-            r = requests.post(
+                files = {
+                    "file": ("image.jpg", img, "image/jpeg")
+                }
 
-                f"{API_BASE}/listings/{listing_id}/photos",
+                r = requests.post(
+                    f"https://api.reverb.com/api/listings/{listing_id}/images",
+                    headers=headers,
+                    files=files
+                )
 
-                headers=headers(api_key),
+            st.write("Status:", r.status_code)
 
-                files=files
-            )
+            if r.status_code in [200, 201]:
 
-        st.write("Status:", r.status_code)
+                success += 1
+                st.success("Uploaded")
 
-        if r.status_code in [200, 201]:
+            else:
 
-            success += 1
-            st.success("Uploaded")
+                st.error(r.text)
 
-        else:
+        except Exception as e:
 
-            st.error(r.text)
+            st.error(e)
 
-        time.sleep(1)
+        time.sleep(2)
 
     st.write("Uploaded", success, "/", len(paths))
 
@@ -181,25 +193,23 @@ def upload_images(api_key, listing_id, paths):
 def publish_listing(api_key, listing_id):
 
     r = requests.put(
-
         f"{API_BASE}/listings/{listing_id}/publish",
-
-        headers=headers(api_key)
-
+        headers=get_headers(api_key)
     )
 
     if r.status_code in [200, 201, 204]:
 
-        st.success("Listing published")
+        st.success("Listing Published")
 
     else:
 
         st.warning("Publish failed")
 
 
-# ---------------- STREAMLIT ----------------
+# ---------------- STREAMLIT UI ----------------
 
 st.title("Reverb Listing Cloner")
+
 
 api_key = st.text_input("API KEY", type="password")
 
@@ -210,7 +220,7 @@ listing_url = st.text_input("Listing URL")
 
 if st.button("CLONE LISTING"):
 
-    listing_id = get_listing_id(listing_url)
+    listing_id = extract_listing_id(listing_url)
 
     st.write("Listing ID:", listing_id)
 
@@ -231,9 +241,9 @@ if st.button("CLONE LISTING"):
 
     st.success(f"New Listing ID: {new_id}")
 
-    st.write("Waiting 25 seconds")
+    st.write("Waiting 40 seconds for listing to be ready")
 
-    time.sleep(25)
+    time.sleep(40)
 
     upload_images(api_key, new_id, paths)
 
