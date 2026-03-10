@@ -6,15 +6,17 @@ from pathlib import Path
 
 API_BASE = "https://api.reverb.com/api"
 
-# ---------- HEADERS ----------
-def get_headers(api_key):
+# ================= HEADERS =================
+
+def headers(api_key):
     return {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
         "Accept": "application/json"
     }
 
-# ---------- EXTRACT LISTING ID ----------
+# ================= EXTRACT LISTING ID =================
+
 def extract_listing_id(url):
 
     if "/item/" in url:
@@ -23,12 +25,13 @@ def extract_listing_id(url):
     return None
 
 
-# ---------- GET LISTING ----------
+# ================= GET LISTING =================
+
 def get_listing(api_key, listing_id):
 
     r = requests.get(
         f"{API_BASE}/listings/{listing_id}",
-        headers=get_headers(api_key)
+        headers=headers(api_key)
     )
 
     if r.status_code != 200:
@@ -38,7 +41,8 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-# ---------- DOWNLOAD IMAGES ----------
+# ================= DOWNLOAD IMAGES =================
+
 def download_images(listing):
 
     photos = listing.get("photos", [])
@@ -65,7 +69,7 @@ def download_images(listing):
 
             paths.append(path)
 
-            st.write(f"✅ Downloaded image {i+1}")
+            st.write("Downloaded", path)
 
         except:
             st.warning("image error")
@@ -73,33 +77,27 @@ def download_images(listing):
     return paths
 
 
-# ---------- EXTRACT MAKE MODEL ----------
-def extract_make_model(listing):
+# ================= CREATE LISTING =================
 
-    make = listing.get("make")
-    model = listing.get("model")
-
-    make_name = make["name"] if isinstance(make, dict) else make
-    model_name = model["name"] if isinstance(model, dict) else model
-
-    return make_name, model_name
-
-
-# ---------- CREATE LISTING ----------
 def create_listing(api_key, listing, shipping_profile_id):
 
-    make, model = extract_make_model(listing)
+    make = listing["make"]
+    model = listing["model"]
 
-    price = float(listing["price"]["amount"])
+    if isinstance(make, dict):
+        make = make["name"]
+
+    if isinstance(model, dict):
+        model = model["name"]
 
     payload = {
 
         "title": listing["title"],
 
-        "description": listing.get("description",""),
+        "description": listing["description"],
 
         "price": {
-            "amount": price,
+            "amount": listing["price"]["amount"],
             "currency": "USD"
         },
 
@@ -120,7 +118,7 @@ def create_listing(api_key, listing, shipping_profile_id):
 
     r = requests.post(
         f"{API_BASE}/listings",
-        headers=get_headers(api_key),
+        headers=headers(api_key),
         json=payload
     )
 
@@ -128,66 +126,86 @@ def create_listing(api_key, listing, shipping_profile_id):
         st.error(r.text)
         return None
 
-    data = r.json()
-
-    return data["listing"]["id"]
+    return r.json()["listing"]["id"]
 
 
-# ---------- UPLOAD IMAGES ----------
+# ================= REQUEST IMAGE SLOT =================
+
+def request_image_slot(api_key, listing_id):
+
+    r = requests.post(
+        f"{API_BASE}/listings/{listing_id}/images",
+        headers=headers(api_key)
+    )
+
+    if r.status_code != 201:
+        st.error("Slot error")
+        st.write(r.text)
+        return None
+
+    return r.json()
+
+
+# ================= UPLOAD IMAGE =================
+
+def upload_image(upload_url, path):
+
+    with open(path,"rb") as img:
+
+        r = requests.put(
+            upload_url,
+            data=img,
+            headers={"Content-Type":"image/jpeg"}
+        )
+
+    return r.status_code in [200,201]
+
+
+# ================= UPLOAD IMAGES =================
+
 def upload_images(api_key, listing_id, paths):
-
-    headers = get_headers(api_key)
 
     success = 0
 
-    st.subheader("Uploading Images")
-
     for p in paths:
 
-        st.write("Uploading:", p)
+        st.write("Uploading", p)
 
-        with open(p,"rb") as img:
+        slot = request_image_slot(api_key, listing_id)
 
-            files = {
-                "file": img
-            }
+        if not slot:
+            continue
 
-            r = requests.post(
+        upload_url = slot["upload_url"]
 
-                f"https://api.reverb.com/api/listings/{listing_id}/cloudinary_photos",
+        ok = upload_image(upload_url, p)
 
-                headers=headers,
-                files=files
-            )
-
-        st.write("Status:", r.status_code)
-
-        if r.status_code in [200,201]:
-
+        if ok:
             success += 1
+            st.success("Uploaded")
+        else:
+            st.error("Upload failed")
 
-    st.write(f"Uploaded {success}/{len(paths)} images")
+        time.sleep(2)
 
-    return success
+    st.write("Uploaded", success, "/", len(paths))
 
 
-# ---------- PUBLISH ----------
+# ================= PUBLISH =================
+
 def publish_listing(api_key, listing_id):
 
     r = requests.put(
-
         f"{API_BASE}/listings/{listing_id}/publish",
-
-        headers=get_headers(api_key)
+        headers=headers(api_key)
     )
 
     return r.status_code in [200,201,204]
 
 
-# ---------- UI ----------
-st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸")
+# ================= STREAMLIT UI =================
 
-st.title("🎸 Reverb Cloner PRO")
+st.title("🎸 Reverb Cloner PRO MAX")
 
 api_key = st.text_input("API Key", type="password")
 
@@ -206,26 +224,26 @@ if st.button("Clone Listing"):
     if not listing:
         st.stop()
 
-    st.write("Downloading images...")
+    st.write("Downloading images")
 
     paths = download_images(listing)
 
     st.write(paths)
 
-    st.write("Creating listing...")
+    st.write("Creating listing")
 
-    new_listing_id = create_listing(api_key, listing, shipping_profile_id)
+    new_id = create_listing(api_key, listing, shipping_profile_id)
 
-    st.success(f"New Listing ID: {new_listing_id}")
+    st.success("New Listing ID: " + str(new_id))
 
-    st.write("Waiting 20 seconds...")
+    st.write("Waiting 25 seconds")
 
-    time.sleep(20)
+    time.sleep(25)
 
-    upload_images(api_key, new_listing_id, paths)
+    upload_images(api_key, new_id, paths)
 
-    publish_listing(api_key, new_listing_id)
+    publish_listing(api_key, new_id)
 
-    st.success("Clone Completed!")
+    st.success("Clone Completed")
 
-    st.markdown(f"https://reverb.com/item/{new_listing_id}")
+    st.markdown(f"https://reverb.com/item/{new_id}")
