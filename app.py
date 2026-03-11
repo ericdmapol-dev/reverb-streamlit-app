@@ -1,25 +1,24 @@
 import streamlit as st
 import requests
-import time
 import os
+import time
 
 API = "https://api.reverb.com/api"
 
 
 # ---------------- HEADERS ----------------
 
-def headers(api_key):
-
+def get_headers(api_key):
     return {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
-        "Accept": "application/json"
+        "Content-Type": "application/json"
     }
 
 
 # ---------------- EXTRACT LISTING ID ----------------
 
-def extract_id(url):
+def extract_listing_id(url):
 
     if "/item/" in url:
         return url.split("/item/")[1].split("-")[0]
@@ -33,7 +32,7 @@ def get_listing(api_key, listing_id):
 
     r = requests.get(
         f"{API}/listings/{listing_id}",
-        headers=headers(api_key)
+        headers=get_headers(api_key)
     )
 
     if r.status_code != 200:
@@ -46,6 +45,8 @@ def get_listing(api_key, listing_id):
 # ---------------- DOWNLOAD IMAGES ----------------
 
 def download_images(listing):
+
+    st.write("Downloading images")
 
     os.makedirs("images", exist_ok=True)
 
@@ -63,29 +64,29 @@ def download_images(listing):
 
             path = f"images/img{i}.jpg"
 
-            with open(path,"wb") as f:
+            with open(path, "wb") as f:
                 f.write(img)
-
-            paths.append(path)
 
             st.write("Downloaded", path)
 
-        except:
+            paths.append(path)
 
+        except:
             st.write("Image failed")
 
     return paths
 
 
-# ---------------- EXTRACT CATEGORY ----------------
+# ---------------- CATEGORY ----------------
 
-def extract_category(listing):
+def get_category(listing):
 
     categories = []
 
-    for cat in listing.get("categories", []):
-        if "uuid" in cat:
-            categories.append(cat["uuid"])
+    for c in listing.get("categories", []):
+
+        if "uuid" in c:
+            categories.append(c["uuid"])
 
     return categories
 
@@ -94,16 +95,9 @@ def extract_category(listing):
 
 def create_listing(api_key, listing, shipping):
 
-    make = listing.get("make")
-    model = listing.get("model")
+    st.write("Creating listing")
 
-    if isinstance(make, dict):
-        make = make["name"]
-
-    if isinstance(model, dict):
-        model = model["name"]
-
-    category = extract_category(listing)
+    categories = get_category(listing)
 
     payload = {
 
@@ -120,24 +114,24 @@ def create_listing(api_key, listing, shipping):
             "uuid": listing["condition"]["uuid"]
         },
 
-        "make": make,
+        "make": listing.get("make",""),
 
-        "model": model,
+        "model": listing.get("model",""),
 
         "finish": listing.get("finish",""),
 
         "year": listing.get("year",""),
 
-        "shipping_profile_id": int(shipping),
+        "category_uuids": categories,
 
-        "category_uuids": category,
+        "shipping_profile_id": int(shipping),
 
         "state": "draft"
     }
 
     r = requests.post(
         f"{API}/listings",
-        headers=headers(api_key),
+        headers=get_headers(api_key),
         json=payload
     )
 
@@ -146,26 +140,33 @@ def create_listing(api_key, listing, shipping):
         st.error(r.text)
         return None
 
-    return r.json()["listing"]["id"]
+    new_id = r.json()["listing"]["id"]
+
+    st.success("New Listing ID: " + str(new_id))
+
+    return new_id
 
 
-# ---------------- UPLOAD IMAGES (SLOT METHOD) ----------------
+# ---------------- UPLOAD IMAGES ----------------
 
 def upload_images(api_key, listing_id, paths):
 
-    h = headers(api_key)
+    st.subheader("Uploading Images")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0"
+    }
 
     success = 0
-
-    st.subheader("Uploading Images")
 
     for path in paths:
 
         st.write("Creating slot for:", path)
 
         slot = requests.post(
-            f"{API}/listings/{listing_id}/images",
-            headers=h
+            f"{API}/listings/{listing_id}/images/upload",
+            headers=headers
         )
 
         if slot.status_code != 201:
@@ -192,7 +193,7 @@ def upload_images(api_key, listing_id, paths):
 
         else:
 
-            st.write("Upload failed", r.status_code)
+            st.write("Upload failed:", r.status_code)
 
         time.sleep(2)
 
@@ -201,7 +202,7 @@ def upload_images(api_key, listing_id, paths):
 
 # ---------------- STREAMLIT UI ----------------
 
-st.title("Reverb Cloner PRO")
+st.title("Reverb Listing Cloner")
 
 api_key = st.text_input("API KEY", type="password")
 
@@ -212,7 +213,7 @@ url = st.text_input("Listing URL")
 
 if st.button("CLONE LISTING"):
 
-    listing_id = extract_id(url)
+    listing_id = extract_listing_id(url)
 
     st.write("Listing ID:", listing_id)
 
@@ -221,22 +222,19 @@ if st.button("CLONE LISTING"):
     if not listing:
         st.stop()
 
-    st.write("Downloading images")
-
     paths = download_images(listing)
-
-    st.write("Creating listing")
 
     new_id = create_listing(api_key, listing, shipping)
 
-    st.success("New Listing ID: " + str(new_id))
+    if not new_id:
+        st.stop()
 
-    st.write("Waiting 60 seconds")
+    st.write("Waiting 90 seconds")
 
-    time.sleep(60)
+    time.sleep(90)
 
     upload_images(api_key, new_id, paths)
 
-    st.success("Clone completed")
+    st.success("Clone Completed")
 
     st.write("https://reverb.com/item/" + str(new_id))
