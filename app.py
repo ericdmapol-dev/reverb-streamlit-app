@@ -104,7 +104,7 @@ def create_listing(api_key, listing, shipping):
 
         "title": listing["title"],
 
-        "description": listing.get("description", ""),
+        "description": listing.get("description",""),
 
         "price": {
             "amount": float(listing["price"]["amount"]),
@@ -115,13 +115,13 @@ def create_listing(api_key, listing, shipping):
             "uuid": listing["condition"]["uuid"]
         },
 
-        "make": listing.get("make", ""),
+        "make": listing.get("make",""),
 
-        "model": listing.get("model", ""),
+        "model": listing.get("model",""),
 
-        "finish": listing.get("finish", ""),
+        "finish": listing.get("finish",""),
 
-        "year": listing.get("year", ""),
+        "year": listing.get("year",""),
 
         "category_uuids": categories,
 
@@ -136,7 +136,7 @@ def create_listing(api_key, listing, shipping):
         json=payload
     )
 
-    if r.status_code not in [200, 201]:
+    if r.status_code not in [200,201]:
 
         st.error(r.text)
         return None
@@ -148,7 +148,7 @@ def create_listing(api_key, listing, shipping):
     return new_id
 
 
-# ---------- UPLOAD IMAGES ----------
+# ---------- UPLOAD IMAGES (SLOT METHOD) ----------
 
 def upload_images(api_key, listing_id, paths):
 
@@ -160,45 +160,52 @@ def upload_images(api_key, listing_id, paths):
 
     for path in paths:
 
-        st.write("Uploading", path)
+        st.write("Creating upload slot:", path)
 
-        try:
+        slot = requests.post(
+            f"{API}/listings/{listing_id}/images",
+            headers=h,
+            json={}
+        )
 
-            with open(path, "rb") as img:
+        st.write("Slot status:", slot.status_code)
 
-                files = {
-                    "file": ("image.jpg", img, "image/jpeg")
-                }
+        if slot.status_code != 201:
 
-                r = requests.post(
-                    f"{API}/listings/{listing_id}/images",
-                    headers=h,
-                    files=files
-                )
+            st.write("Slot error:", slot.text)
+            continue
 
-            st.write("Status:", r.status_code)
+        upload_url = slot.json()["upload_url"]
 
-            if r.status_code in [200, 201]:
+        st.write("Uploading image")
 
-                success += 1
-                st.success("Uploaded")
+        with open(path,"rb") as img:
 
-            else:
+            r = requests.put(
+                upload_url,
+                data=img,
+                headers={"Content-Type":"image/jpeg"}
+            )
 
-                st.write("Upload error:", r.text)
+        st.write("Upload status:", r.status_code)
 
-        except Exception as e:
+        if r.status_code in [200,201]:
 
-            st.write("Error:", e)
+            success += 1
+            st.success("Uploaded")
+
+        else:
+
+            st.write("Upload failed:", r.text)
 
         time.sleep(2)
 
     st.write("Uploaded", success, "/", len(paths))
 
 
-# ---------- STREAMLIT UI ----------
+# ---------- UI ----------
 
-st.title("Reverb Listing Cloner")
+st.title("Reverb Listing Cloner PRO")
 
 api_key = st.text_input("API KEY", type="password")
 
@@ -225,9 +232,9 @@ if st.button("CLONE LISTING"):
     if not new_id:
         st.stop()
 
-    st.write("Waiting 120 seconds")
+    st.write("Waiting 150 seconds for listing to be ready")
 
-    time.sleep(120)
+    time.sleep(150)
 
     upload_images(api_key, new_id, paths)
 
