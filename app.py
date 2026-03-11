@@ -6,17 +6,18 @@ import time
 API = "https://api.reverb.com/api"
 
 
-# -------- HEADERS --------
+# ---------- HEADERS ----------
 
 def headers(api_key):
 
     return {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        "Accept": "application/json"
     }
 
 
-# -------- EXTRACT LISTING ID --------
+# ---------- EXTRACT LISTING ID ----------
 
 def extract_id(url):
 
@@ -26,7 +27,7 @@ def extract_id(url):
     return url
 
 
-# -------- GET LISTING --------
+# ---------- GET LISTING ----------
 
 def get_listing(api_key, listing_id):
 
@@ -42,7 +43,7 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-# -------- DOWNLOAD IMAGES --------
+# ---------- DOWNLOAD IMAGES ----------
 
 def download_images(listing):
 
@@ -78,27 +79,26 @@ def download_images(listing):
     return paths
 
 
-# -------- GET CATEGORY --------
+# ---------- CATEGORY ----------
 
-def get_category(listing):
+def get_categories(listing):
 
-    categories = []
+    cats = []
 
     for c in listing.get("categories", []):
-
         if "uuid" in c:
-            categories.append(c["uuid"])
+            cats.append(c["uuid"])
 
-    return categories
+    return cats
 
 
-# -------- CREATE LISTING --------
+# ---------- CREATE LISTING ----------
 
 def create_listing(api_key, listing, shipping):
 
     st.write("Creating listing")
 
-    categories = get_category(listing)
+    categories = get_categories(listing)
 
     payload = {
 
@@ -148,7 +148,7 @@ def create_listing(api_key, listing, shipping):
     return new_id
 
 
-# -------- UPLOAD IMAGES --------
+# ---------- UPLOAD IMAGES ----------
 
 def upload_images(api_key, listing_id, paths):
 
@@ -167,7 +167,7 @@ def upload_images(api_key, listing_id, paths):
             with open(path, "rb") as img:
 
                 files = {
-                    "image": img
+                    "file": ("image.jpg", img, "image/jpeg")
                 }
 
                 r = requests.post(
@@ -196,7 +196,7 @@ def upload_images(api_key, listing_id, paths):
     st.write("Uploaded", success, "/", len(paths))
 
 
-# -------- UI --------
+# ---------- STREAMLIT UI ----------
 
 st.title("Reverb Listing Cloner")
 
@@ -225,9 +225,9 @@ if st.button("CLONE LISTING"):
     if not new_id:
         st.stop()
 
-    st.write("Waiting 90 seconds")
+    st.write("Waiting 120 seconds")
 
-    time.sleep(90)
+    time.sleep(120)
 
     upload_images(api_key, new_id, paths)
 
