@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - WITH FIXED PUBLISH BUTTON")
+st.title("🎸 Reverb Cloner PRO MAX - AUTO PUBLISH")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -273,10 +273,10 @@ def create_listing(api_key, original_listing, shipping_profile_id, price_multipl
         return None
 
 def upload_images(api_key, listing_id, image_paths):
-    """Upload images to the listing - FINAL VERSION with multiple endpoints"""
+    """Upload images to the listing - FIXED VERSION"""
     if not image_paths:
         st.warning("No images to upload")
-        return False
+        return True  # Return True if no images needed
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -290,24 +290,17 @@ def upload_images(api_key, listing_id, image_paths):
     )
     
     if check_response.status_code != 200:
-        st.error("❌ Cannot access the listing. It may not be ready yet.")
+        st.warning("⚠️ Cannot access the listing yet. Will continue without images.")
         return False
     
-    st.write(f"✅ Listing verified, attempting to upload {len(image_paths)} images...")
+    st.write(f"✅ Listing verified, uploading {len(image_paths)} images...")
     
-    # Try different endpoints that might work
-    endpoints_to_try = [
-        f"{API_BASE}/listings/{listing_id}/photos",
-        f"{API_BASE}/my/listings/{listing_id}/photos",
-        f"https://api.reverb.com/api/listings/{listing_id}/photos",
-        f"https://api.reverb.com/api/my/listings/{listing_id}/photos"
-    ]
-
+    # CORRECT ENDPOINT from Reverb API documentation
+    upload_url = f"{API_BASE}/listings/{listing_id}/photos"
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
     successful_uploads = 0
-    
-    st.subheader("📤 Uploading Images")
     
     for i, image_path in enumerate(image_paths):
         status_text.text(f"Uploading image {i+1} of {len(image_paths)}")
@@ -319,137 +312,72 @@ def upload_images(api_key, listing_id, image_paths):
             
             # Add delay between uploads
             if i > 0:
-                time.sleep(3)
+                time.sleep(2)
             
-            uploaded = False
-            
-            # Try each endpoint
-            for endpoint in endpoints_to_try:
-                if uploaded:
-                    break
-                    
-                with open(image_path, "rb") as img_file:
-                    files = {
-                        'photo': (f'image_{i}.jpg', img_file, 'image/jpeg')
-                    }
-                    
-                    try:
-                        upload_response = requests.post(
-                            endpoint,
-                            headers=headers,
-                            files=files,
-                            timeout=30
-                        )
-                        
-                        if upload_response.status_code in [200, 201, 202, 204]:
-                            successful_uploads += 1
-                            st.write(f"✅ Uploaded image {i+1}")
-                            uploaded = True
-                        else:
-                            st.write(f"Endpoint {endpoint} returned {upload_response.status_code}")
-                    except:
-                        continue
-            
-            if not uploaded:
-                st.write(f"❌ Failed to upload image {i+1} with all endpoints")
+            with open(image_path, "rb") as img_file:
+                files = {
+                    'photo': (f'image_{i}.jpg', img_file, 'image/jpeg')
+                }
+                
+                upload_response = requests.post(
+                    upload_url,
+                    headers=headers,
+                    files=files,
+                    timeout=30
+                )
+                
+                if upload_response.status_code in [200, 201, 202, 204]:
+                    successful_uploads += 1
+                    st.write(f"✅ Uploaded image {i+1}")
+                else:
+                    st.write(f"⚠️ Image {i+1} upload returned {upload_response.status_code}")
             
         except Exception as e:
-            st.warning(f"❌ Error: {str(e)}")
+            st.warning(f"⚠️ Error uploading image {i+1}: {str(e)[:50]}")
         
         progress_bar.progress((i + 1) / len(image_paths))
     
-    status_text.text(f"Upload complete! {successful_uploads}/{len(image_paths)} images uploaded")
+    status_text.text(f"Uploaded {successful_uploads}/{len(image_paths)} images")
     progress_bar.empty()
-    
-    if successful_uploads == 0:
-        st.warning("⚠️ Could not upload images via API.")
-        st.info("📌 **Manual Upload Option:**")
-        st.markdown(f"1. Your images are saved in the **'images'** folder")
-        st.markdown(f"2. Go to your draft listing: [Edit Listing](https://reverb.com/item/{listing_id}/edit)")
-        st.markdown(f"3. Upload the images manually through the Reverb website")
-        st.markdown(f"4. Then publish the listing")
     
     return successful_uploads > 0
 
-def check_listing_exists(api_key, listing_id):
-    """Check if a listing exists and is accessible"""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
-    }
-    
-    try:
-        response = requests.get(
-            f"{API_BASE}/listings/{listing_id}",
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            return True, response.json()
-        else:
-            return False, None
-    except Exception as e:
-        return False, None
-
-def publish_listing(api_key, listing_id):
-    """Publish a draft listing with better error handling"""
+def publish_listing(api_key, listing_id, max_retries=3):
+    """Publish a draft listing with retries"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
         "Content-Type": "application/json"
     }
     
-    # First check if listing exists
-    exists, listing_data = check_listing_exists(api_key, listing_id)
-    
-    if not exists:
-        st.error(f"❌ Listing {listing_id} does not exist or is not accessible with this API key")
-        st.info("💡 Make sure you're using the correct API key and the listing ID is correct")
-        return False
-    
-    # Check if already published
-    if listing_data and isinstance(listing_data, dict):
-        state = listing_data.get("state", {})
-        if isinstance(state, dict):
-            slug = state.get("slug", "")
-            if slug == "published":
-                st.warning(f"⚠️ Listing {listing_id} is already published!")
+    for attempt in range(max_retries):
+        try:
+            st.write(f"📢 Publishing attempt {attempt + 1}/{max_retries}...")
+            
+            response = requests.put(
+                f"{API_BASE}/listings/{listing_id}/publish",
+                headers=headers,
+                timeout=15
+            )
+            
+            if response.status_code in [200, 201, 204]:
+                st.success(f"✅ Listing {listing_id} published successfully!")
                 return True
+            elif response.status_code == 404 and attempt < max_retries - 1:
+                st.write("⏳ Listing not ready yet, waiting...")
+                time.sleep(5)  # Wait 5 seconds before retry
+            else:
+                st.warning(f"⚠️ Publish attempt {attempt + 1} returned {response.status_code}")
+                if response.text and attempt == max_retries - 1:
+                    st.write(f"Error: {response.text[:200]}")
+                
+        except Exception as e:
+            st.warning(f"⚠️ Error on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(5)
     
-    # Try to publish
-    try:
-        response = requests.put(
-            f"{API_BASE}/listings/{listing_id}/publish",
-            headers=headers,
-            timeout=15
-        )
-        
-        if response.status_code in [200, 201, 204]:
-            st.success(f"✅ Listing {listing_id} published successfully!")
-            return True
-        else:
-            st.error(f"❌ Could not publish listing: HTTP {response.status_code}")
-            if response.text:
-                try:
-                    error_json = response.json()
-                    st.error(f"Error details: {json.dumps(error_json, indent=2)}")
-                except:
-                    st.error(f"Error: {response.text[:200]}")
-            
-            # Provide helpful suggestions
-            if response.status_code == 404:
-                st.info("💡 The listing wasn't found. It might still be processing or the ID is wrong.")
-                st.info(f"🔗 Try opening this link to check: https://reverb.com/item/{listing_id}/edit")
-            elif response.status_code == 403:
-                st.info("💡 Your API key doesn't have permission to publish this listing.")
-            elif response.status_code == 422:
-                st.info("💡 The listing might be missing required information (like photos or shipping).")
-            
-            return False
-    except Exception as e:
-        st.error(f"❌ Error publishing listing: {e}")
-        return False
+    st.error(f"❌ Could not publish listing after {max_retries} attempts")
+    return False
 
 def cleanup_images(image_paths, keep_images=False):
     """Clean up downloaded images"""
@@ -482,21 +410,9 @@ with st.sidebar:
         help="Keep downloaded images locally after upload"
     )
     
-    auto_publish = st.checkbox(
-        "Auto-publish listing",
-        value=True,
-        help="Automatically publish the listing after image upload"
-    )
-    
     st.markdown("---")
-    st.markdown("### 📌 Note")
-    st.markdown("If API upload fails, images are saved in the 'images' folder for manual upload.")
-
-# Initialize session state for listing ID
-if 'last_listing_id' not in st.session_state:
-    st.session_state.last_listing_id = None
-if 'last_api_key' not in st.session_state:
-    st.session_state.last_api_key = None
+    st.markdown("### 🔥 Auto-Publish")
+    st.markdown("Listing will be published automatically after creation")
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -555,101 +471,37 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         
         st.success(f"✅ Created new listing with ID: {new_listing_id}")
         
-        # Save to session state
-        st.session_state.last_listing_id = new_listing_id
-        st.session_state.last_api_key = api_key
-        
         # Wait for listing to be ready
-        st.write("⏳ Waiting 15 seconds for listing to be ready...")
-        time.sleep(15)
+        st.write("⏳ Waiting 10 seconds for listing to be ready...")
+        time.sleep(10)
         
         # Upload images
         if image_paths:
             st.info("📤 Uploading images...")
-            upload_success = upload_images(api_key, new_listing_id, image_paths)
-            
-            if upload_success:
-                st.success("✅ Images uploaded successfully")
-            else:
-                st.warning("⚠️ Some images failed to upload")
+            upload_images(api_key, new_listing_id, image_paths)
         
-        # Publish the listing if auto-publish is enabled
-        if auto_publish and new_listing_id:
-            st.info("📢 Publishing listing...")
-            publish_listing(api_key, new_listing_id)
+        # Wait a bit after uploads
+        time.sleep(5)
+        
+        # PUBLISH AUTOMATICALLY
+        st.info("📢 Auto-publishing listing...")
+        publish_success = publish_listing(api_key, new_listing_id, max_retries=5)
+        
+        if publish_success:
+            st.balloons()
+            st.success("🎉 Listing created and published successfully!")
+        else:
+            st.warning("⚠️ Listing created but auto-publish failed")
+            st.info(f"📌 You can publish manually: https://reverb.com/item/{new_listing_id}/edit")
         
         # Cleanup
         cleanup_images(image_paths, keep_images)
-        
-        # Success message
-        st.balloons()
-        st.success("🎉 Clone completed successfully!")
         
         # Show link to new listing
         if new_listing_id:
             st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
             st.markdown(f"✏️ [Edit your listing](https://reverb.com/item/{new_listing_id}/edit)")
 
-# ===== IMPROVED PUBLISH BUTTON SECTION =====
-st.markdown("---")
-st.subheader("📢 Publish Listing")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    publish_listing_id = st.text_input(
-        "Listing ID to publish", 
-        value=st.session_state.last_listing_id if st.session_state.last_listing_id else "", 
-        placeholder="Enter listing ID e.g. 94935558"
-    )
-
-with col2:
-    publish_api_key = st.text_input(
-        "API Key for publishing", 
-        type="password", 
-        value=st.session_state.last_api_key if st.session_state.last_api_key else "", 
-        placeholder="Enter your API key"
-    )
-
-# Check button
-col_check, col_publish = st.columns(2)
-
-with col_check:
-    if st.button("🔍 Check Listing Status", use_container_width=True):
-        if not publish_api_key:
-            st.error("❌ Please enter API Key")
-        elif not publish_listing_id:
-            st.error("❌ Please enter Listing ID")
-        else:
-            with st.spinner("Checking listing..."):
-                exists, listing_data = check_listing_exists(publish_api_key, publish_listing_id)
-                if exists:
-                    st.success(f"✅ Listing {publish_listing_id} exists!")
-                    
-                    # Show listing state
-                    if listing_data and isinstance(listing_data, dict):
-                        state = listing_data.get("state", {})
-                        if isinstance(state, dict):
-                            slug = state.get("slug", "unknown")
-                            desc = state.get("description", "")
-                            st.info(f"📌 Status: **{slug}** - {desc}")
-                    
-                    st.markdown(f"🔗 [Open listing](https://reverb.com/item/{publish_listing_id})")
-                    st.markdown(f"✏️ [Edit listing](https://reverb.com/item/{publish_listing_id}/edit)")
-                else:
-                    st.error(f"❌ Listing {publish_listing_id} not found or not accessible")
-
-with col_publish:
-    if st.button("🔥 Publish Listing Now", type="secondary", use_container_width=True):
-        if not publish_api_key:
-            st.error("❌ Please enter API Key")
-        elif not publish_listing_id:
-            st.error("❌ Please enter Listing ID")
-        else:
-            with st.spinner("Publishing listing..."):
-                publish_listing(publish_api_key, publish_listing_id)
-# ===== END IMPROVED SECTION =====
-
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with fixed publish button")
+st.markdown("Made with 🎸 for Reverb sellers | AUTO-PUBLISH VERSION")
