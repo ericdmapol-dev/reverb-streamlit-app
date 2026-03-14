@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - FINAL VERSION")
+st.title("🎸 Reverb Cloner PRO MAX - WITH PUBLISH BUTTON")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -387,14 +387,15 @@ def publish_listing(api_key, listing_id):
         )
         
         if response.status_code in [200, 201, 204]:
-            st.write(f"✅ Listing {listing_id} published successfully")
+            st.success(f"✅ Listing {listing_id} published successfully!")
             return True
         else:
-            st.warning(f"Could not publish listing: {response.status_code}")
-            st.info(f"💡 You can publish manually: https://reverb.com/item/{listing_id}/edit")
+            st.error(f"❌ Could not publish listing: {response.status_code}")
+            if response.text:
+                st.error(f"Error: {response.text[:200]}")
             return False
     except Exception as e:
-        st.warning(f"Error publishing listing: {e}")
+        st.error(f"❌ Error publishing listing: {e}")
         return False
 
 def cleanup_images(image_paths, keep_images=False):
@@ -437,6 +438,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📌 Note")
     st.markdown("If API upload fails, images are saved in the 'images' folder for manual upload.")
+
+# ===== NEW CODE START =====
+# Initialize session state for listing ID
+if 'last_listing_id' not in st.session_state:
+    st.session_state.last_listing_id = None
+if 'last_api_key' not in st.session_state:
+    st.session_state.last_api_key = None
+# ===== NEW CODE END =====
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -495,6 +504,12 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         
         st.success(f"✅ Created new listing with ID: {new_listing_id}")
         
+        # ===== NEW CODE START =====
+        # Save to session state
+        st.session_state.last_listing_id = new_listing_id
+        st.session_state.last_api_key = api_key
+        # ===== NEW CODE END =====
+        
         # Wait for listing to be ready
         st.write("⏳ Waiting 15 seconds for listing to be ready...")
         time.sleep(15)
@@ -526,6 +541,33 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
             st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
             st.markdown(f"✏️ [Edit your listing](https://reverb.com/item/{new_listing_id}/edit)")
 
+# ===== NEW CODE START =====
+# Separate Publish Button
+st.markdown("---")
+st.subheader("📢 Publish Listing")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    publish_listing_id = st.text_input("Listing ID to publish", value=st.session_state.last_listing_id if st.session_state.last_listing_id else "", placeholder="Enter listing ID")
+
+with col2:
+    publish_api_key = st.text_input("API Key for publishing", type="password", value="", placeholder="Enter API key")
+
+if st.button("🔥 Publish Listing Now", type="secondary", use_container_width=True):
+    if not publish_api_key:
+        st.error("❌ Please enter API Key")
+    elif not publish_listing_id:
+        st.error("❌ Please enter Listing ID")
+    else:
+        with st.spinner("Publishing listing..."):
+            if publish_listing(publish_api_key, publish_listing_id):
+                st.success(f"✅ Listing {publish_listing_id} published successfully!")
+                st.markdown(f"🔗 [View published listing](https://reverb.com/item/{publish_listing_id})")
+            else:
+                st.error("❌ Failed to publish listing")
+# ===== NEW CODE END =====
+
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with all fixes")
+st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with separate publish button")
