@@ -4,7 +4,6 @@ import requests
 API = "https://api.reverb.com/api"
 
 
-# تنظيف الرابط إذا وضع المستخدم URL بدل ID
 def clean_id(value):
 
     if "reverb.com" in value:
@@ -13,30 +12,23 @@ def clean_id(value):
     return value
 
 
-# نشر listing
 def publish_listing(api_key, listing_id):
 
     listing_id = clean_id(listing_id)
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0",
-        "Content-Type": "application/json"
+        "Accept-Version": "3.0"
     }
 
-    payload = {
-        "state": "live"
-    }
-
-    r = requests.put(
-        f"{API}/listings/{listing_id}/state",
-        headers=headers,
-        json=payload
+    r = requests.post(
+        f"{API}/listings/{listing_id}/publish",
+        headers=headers
     )
 
     st.write("Status:", r.status_code)
 
-    if r.status_code == 200:
+    if r.status_code in [200,201]:
 
         st.success("Listing Published")
 
@@ -46,8 +38,6 @@ def publish_listing(api_key, listing_id):
 
         st.error(r.text)
 
-
-# الواجهة
 
 st.title("Reverb Draft Publisher")
 
