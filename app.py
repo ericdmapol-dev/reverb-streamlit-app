@@ -4,13 +4,15 @@ import requests
 API = "https://api.reverb.com/api"
 
 
-# تنظيف الرابط إذا وضع المستخدم URL
+# استخراج Listing ID من الرابط
 def clean_id(value):
 
     if "reverb.com" in value:
-        return value.split("/item/")[1].split("-")[0]
 
-    return value
+        value = value.split("/item/")[1]
+        value = value.split("-")[0]
+
+    return value.strip()
 
 
 # نشر Draft Listing
@@ -34,6 +36,7 @@ def publish_listing(api_key, listing_id):
         json=payload
     )
 
+    st.write("Listing ID:", listing_id)
     st.write("Status:", r.status_code)
 
     if r.status_code == 200:
@@ -48,7 +51,7 @@ def publish_listing(api_key, listing_id):
         st.error(r.text)
 
 
-# الواجهة
+# واجهة التطبيق
 st.title("Reverb Draft Publisher")
 
 api_key = st.text_input("API KEY", type="password")
