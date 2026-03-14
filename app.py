@@ -7,7 +7,7 @@ import json
 
 # Page configuration
 st.set_page_config(page_title="Reverb Cloner PRO", page_icon="🎸", layout="centered")
-st.title("🎸 Reverb Cloner PRO MAX - WITH PUBLISH BUTTON")
+st.title("🎸 Reverb Cloner PRO MAX - WITH FIXED PUBLISH BUTTON")
 st.markdown("---")
 
 API_BASE = "https://api.reverb.com/api"
@@ -371,14 +371,53 @@ def upload_images(api_key, listing_id, image_paths):
     
     return successful_uploads > 0
 
+def check_listing_exists(api_key, listing_id):
+    """Check if a listing exists and is accessible"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept-Version": "3.0"
+    }
+    
+    try:
+        response = requests.get(
+            f"{API_BASE}/listings/{listing_id}",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            return True, response.json()
+        else:
+            return False, None
+    except Exception as e:
+        return False, None
+
 def publish_listing(api_key, listing_id):
-    """Publish a draft listing"""
+    """Publish a draft listing with better error handling"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
         "Content-Type": "application/json"
     }
     
+    # First check if listing exists
+    exists, listing_data = check_listing_exists(api_key, listing_id)
+    
+    if not exists:
+        st.error(f"❌ Listing {listing_id} does not exist or is not accessible with this API key")
+        st.info("💡 Make sure you're using the correct API key and the listing ID is correct")
+        return False
+    
+    # Check if already published
+    if listing_data and isinstance(listing_data, dict):
+        state = listing_data.get("state", {})
+        if isinstance(state, dict):
+            slug = state.get("slug", "")
+            if slug == "published":
+                st.warning(f"⚠️ Listing {listing_id} is already published!")
+                return True
+    
+    # Try to publish
     try:
         response = requests.put(
             f"{API_BASE}/listings/{listing_id}/publish",
@@ -390,9 +429,23 @@ def publish_listing(api_key, listing_id):
             st.success(f"✅ Listing {listing_id} published successfully!")
             return True
         else:
-            st.error(f"❌ Could not publish listing: {response.status_code}")
+            st.error(f"❌ Could not publish listing: HTTP {response.status_code}")
             if response.text:
-                st.error(f"Error: {response.text[:200]}")
+                try:
+                    error_json = response.json()
+                    st.error(f"Error details: {json.dumps(error_json, indent=2)}")
+                except:
+                    st.error(f"Error: {response.text[:200]}")
+            
+            # Provide helpful suggestions
+            if response.status_code == 404:
+                st.info("💡 The listing wasn't found. It might still be processing or the ID is wrong.")
+                st.info(f"🔗 Try opening this link to check: https://reverb.com/item/{listing_id}/edit")
+            elif response.status_code == 403:
+                st.info("💡 Your API key doesn't have permission to publish this listing.")
+            elif response.status_code == 422:
+                st.info("💡 The listing might be missing required information (like photos or shipping).")
+            
             return False
     except Exception as e:
         st.error(f"❌ Error publishing listing: {e}")
@@ -439,13 +492,11 @@ with st.sidebar:
     st.markdown("### 📌 Note")
     st.markdown("If API upload fails, images are saved in the 'images' folder for manual upload.")
 
-# ===== NEW CODE START =====
 # Initialize session state for listing ID
 if 'last_listing_id' not in st.session_state:
     st.session_state.last_listing_id = None
 if 'last_api_key' not in st.session_state:
     st.session_state.last_api_key = None
-# ===== NEW CODE END =====
 
 # Main inputs
 api_key = st.text_input("🔑 API Key", type="password", help="Enter your Reverb API key")
@@ -504,11 +555,9 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
         
         st.success(f"✅ Created new listing with ID: {new_listing_id}")
         
-        # ===== NEW CODE START =====
         # Save to session state
         st.session_state.last_listing_id = new_listing_id
         st.session_state.last_api_key = api_key
-        # ===== NEW CODE END =====
         
         # Wait for listing to be ready
         st.write("⏳ Waiting 15 seconds for listing to be ready...")
@@ -541,33 +590,66 @@ if st.button("🚀 Start Cloning", type="primary", use_container_width=True):
             st.markdown(f"🔗 [View your new listing](https://reverb.com/item/{new_listing_id})")
             st.markdown(f"✏️ [Edit your listing](https://reverb.com/item/{new_listing_id}/edit)")
 
-# ===== NEW CODE START =====
-# Separate Publish Button
+# ===== IMPROVED PUBLISH BUTTON SECTION =====
 st.markdown("---")
 st.subheader("📢 Publish Listing")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    publish_listing_id = st.text_input("Listing ID to publish", value=st.session_state.last_listing_id if st.session_state.last_listing_id else "", placeholder="Enter listing ID")
+    publish_listing_id = st.text_input(
+        "Listing ID to publish", 
+        value=st.session_state.last_listing_id if st.session_state.last_listing_id else "", 
+        placeholder="Enter listing ID e.g. 94935558"
+    )
 
 with col2:
-    publish_api_key = st.text_input("API Key for publishing", type="password", value="", placeholder="Enter API key")
+    publish_api_key = st.text_input(
+        "API Key for publishing", 
+        type="password", 
+        value=st.session_state.last_api_key if st.session_state.last_api_key else "", 
+        placeholder="Enter your API key"
+    )
 
-if st.button("🔥 Publish Listing Now", type="secondary", use_container_width=True):
-    if not publish_api_key:
-        st.error("❌ Please enter API Key")
-    elif not publish_listing_id:
-        st.error("❌ Please enter Listing ID")
-    else:
-        with st.spinner("Publishing listing..."):
-            if publish_listing(publish_api_key, publish_listing_id):
-                st.success(f"✅ Listing {publish_listing_id} published successfully!")
-                st.markdown(f"🔗 [View published listing](https://reverb.com/item/{publish_listing_id})")
-            else:
-                st.error("❌ Failed to publish listing")
-# ===== NEW CODE END =====
+# Check button
+col_check, col_publish = st.columns(2)
+
+with col_check:
+    if st.button("🔍 Check Listing Status", use_container_width=True):
+        if not publish_api_key:
+            st.error("❌ Please enter API Key")
+        elif not publish_listing_id:
+            st.error("❌ Please enter Listing ID")
+        else:
+            with st.spinner("Checking listing..."):
+                exists, listing_data = check_listing_exists(publish_api_key, publish_listing_id)
+                if exists:
+                    st.success(f"✅ Listing {publish_listing_id} exists!")
+                    
+                    # Show listing state
+                    if listing_data and isinstance(listing_data, dict):
+                        state = listing_data.get("state", {})
+                        if isinstance(state, dict):
+                            slug = state.get("slug", "unknown")
+                            desc = state.get("description", "")
+                            st.info(f"📌 Status: **{slug}** - {desc}")
+                    
+                    st.markdown(f"🔗 [Open listing](https://reverb.com/item/{publish_listing_id})")
+                    st.markdown(f"✏️ [Edit listing](https://reverb.com/item/{publish_listing_id}/edit)")
+                else:
+                    st.error(f"❌ Listing {publish_listing_id} not found or not accessible")
+
+with col_publish:
+    if st.button("🔥 Publish Listing Now", type="secondary", use_container_width=True):
+        if not publish_api_key:
+            st.error("❌ Please enter API Key")
+        elif not publish_listing_id:
+            st.error("❌ Please enter Listing ID")
+        else:
+            with st.spinner("Publishing listing..."):
+                publish_listing(publish_api_key, publish_listing_id)
+# ===== END IMPROVED SECTION =====
 
 # Add footer
 st.markdown("---")
-st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with separate publish button")
+st.markdown("Made with 🎸 for Reverb sellers | FINAL VERSION with fixed publish button")
