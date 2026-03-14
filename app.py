@@ -5,27 +5,28 @@ import time
 
 API = "https://api.reverb.com/api"
 
-# ---------------- HEADERS ----------------
+
+# ---------- HEADERS ----------
 
 def headers(api_key):
-
     return {
         "Authorization": f"Bearer {api_key}",
         "Accept-Version": "3.0",
         "Accept": "application/json"
     }
 
-# ---------------- EXTRACT LISTING ID ----------------
 
-def extract_id(url):
+# ---------- CLEAN LISTING ID ----------
 
-    if "/item/" in url:
-        return url.split("/item/")[1].split("-")[0]
+def clean_listing_id(value):
 
-    return url
+    if "reverb.com" in value:
+        return value.split("/item/")[1].split("-")[0]
+
+    return value
 
 
-# ---------------- GET LISTING ----------------
+# ---------- GET LISTING ----------
 
 def get_listing(api_key, listing_id):
 
@@ -41,7 +42,7 @@ def get_listing(api_key, listing_id):
     return r.json()
 
 
-# ---------------- DOWNLOAD IMAGES ----------------
+# ---------- DOWNLOAD IMAGES ----------
 
 def download_images(listing):
 
@@ -77,21 +78,20 @@ def download_images(listing):
     return paths
 
 
-# ---------------- GET CATEGORY ----------------
+# ---------- CATEGORY ----------
 
 def get_categories(listing):
 
     cats = []
 
     for c in listing.get("categories", []):
-
         if "uuid" in c:
             cats.append(c["uuid"])
 
     return cats
 
 
-# ---------------- CREATE LISTING ----------------
+# ---------- CREATE LISTING ----------
 
 def create_listing(api_key, listing, shipping):
 
@@ -145,7 +145,7 @@ def create_listing(api_key, listing, shipping):
     return new_id
 
 
-# ---------------- UPLOAD IMAGES ----------------
+# ---------- UPLOAD IMAGES ----------
 
 def upload_images(api_key, listing_id, paths):
 
@@ -194,22 +194,28 @@ def upload_images(api_key, listing_id, paths):
     st.write("Uploaded", success, "/", len(paths))
 
 
-# ---------------- PUBLISH LISTING ----------------
+# ---------- PUBLISH LISTING ----------
 
 def publish_listing(api_key, listing_id):
 
-    r = requests.post(
-        f"{API}/listings/{listing_id}/publish",
-        headers=headers(api_key)
+    listing_id = clean_listing_id(listing_id)
+
+    payload = {"state": "live"}
+
+    r = requests.put(
+        f"{API}/listings/{listing_id}/state",
+        headers=headers(api_key),
+        json=payload
     )
 
     if r.status_code == 200:
         st.success("Listing Published")
+        st.write("https://reverb.com/item/" + listing_id)
     else:
         st.error(r.text)
 
 
-# ---------------- PUBLISH ALL DRAFTS ----------------
+# ---------- PUBLISH ALL DRAFTS ----------
 
 def publish_all_drafts(api_key):
 
@@ -230,17 +236,22 @@ def publish_all_drafts(api_key):
 
         st.write("Publishing:", listing_id)
 
-        requests.post(
-            f"{API}/listings/{listing_id}/publish",
-            headers=headers(api_key)
+        payload = {"state": "live"}
+
+        requests.put(
+            f"{API}/listings/{listing_id}/state",
+            headers=headers(api_key),
+            json=payload
         )
 
     st.success("All Drafts Published")
 
 
-# ---------------- DELETE LISTING ----------------
+# ---------- DELETE LISTING ----------
 
 def delete_listing(api_key, listing_id):
+
+    listing_id = clean_listing_id(listing_id)
 
     r = requests.delete(
         f"{API}/listings/{listing_id}",
@@ -253,12 +264,13 @@ def delete_listing(api_key, listing_id):
         st.error(r.text)
 
 
-# ---------------- CHANGE PRICE ----------------
+# ---------- CHANGE PRICE ----------
 
 def change_price(api_key, listing_id, price):
 
-    payload = {
+    listing_id = clean_listing_id(listing_id)
 
+    payload = {
         "price": {
             "amount": float(price),
             "currency": "USD"
@@ -277,7 +289,7 @@ def change_price(api_key, listing_id, price):
         st.error(r.text)
 
 
-# ---------------- STREAMLIT UI ----------------
+# ---------- UI ----------
 
 st.title("Reverb Listing Manager PRO")
 
@@ -287,11 +299,12 @@ shipping = st.text_input("Shipping Profile ID")
 
 url = st.text_input("Listing URL")
 
+
 # ---------- CLONE ----------
 
 if st.button("CLONE LISTING"):
 
-    listing_id = extract_id(url)
+    listing_id = clean_listing_id(url)
 
     st.write("Listing ID:", listing_id)
 
