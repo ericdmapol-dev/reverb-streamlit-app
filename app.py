@@ -18,17 +18,23 @@ def publish_listing(api_key, listing_id):
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Accept-Version": "3.0"
+        "Accept-Version": "3.0",
+        "Content-Type": "application/json"
     }
 
-    r = requests.post(
-        f"{API}/listings/{listing_id}/publish",
-        headers=headers
+    payload = {
+        "state": "live"
+    }
+
+    r = requests.patch(
+        f"{API}/listings/{listing_id}",
+        headers=headers,
+        json=payload
     )
 
     st.write("Status:", r.status_code)
 
-    if r.status_code in [200,201]:
+    if r.status_code == 200:
 
         st.success("Listing Published")
 
@@ -45,6 +51,6 @@ api_key = st.text_input("API KEY", type="password")
 
 listing_id = st.text_input("Draft Listing ID")
 
-if st.button("PUBLISH LISTING"):
+if st.button("Publish"):
 
     publish_listing(api_key, listing_id)
