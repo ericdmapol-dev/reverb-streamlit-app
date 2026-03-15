@@ -2,31 +2,29 @@ import streamlit as st
 import requests
 
 API_KEY = "YOUR_REVERB_API_KEY"
-headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept-Version": "3.0"   # ضروري باش يتجاوب السيرفر
+}
 
-# Get drafts
 def get_drafts():
     url = "https://api.reverb.com/api/listings?state=draft"
     r = requests.get(url, headers=headers)
-
-    st.write("Status Code:", r.status_code)   # باش تشوف الرد
-    st.write("Response Text:", r.text[:500]) # أول 500 كاراكتر من الرد
-
+    st.write("Status Code:", r.status_code)
+    st.write("Response Text:", r.text[:300])
     try:
         return r.json().get("listings", [])
     except Exception as e:
         st.error(f"JSON decode error: {e}")
         return []
 
-# Publish draft
 def publish_draft(listing_id):
     url = f"https://api.reverb.com/api/listings/{listing_id}"
     data = {"state": "active"}
     r = requests.put(url, headers=headers, json=data)
-
     st.write("Publish Status:", r.status_code)
-    st.write("Publish Response:", r.text[:500])
-
+    st.write("Publish Response:", r.text[:300])
     try:
         return r.json()
     except Exception as e:
