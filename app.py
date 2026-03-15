@@ -4,16 +4,18 @@ import requests
 API_KEY = "YOUR_REVERB_API_KEY"
 headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
-# Get drafts from Reverb
+# Get drafts
 def get_drafts():
-    response = requests.get("https://api.reverb.com/api/listings?state=draft", headers=headers)
-    return response.json().get("listings", [])
+    url = "https://api.reverb.com/api/listings?state=draft"
+    r = requests.get(url, headers=headers)
+    return r.json().get("listings", [])
 
 # Publish draft
 def publish_draft(listing_id):
+    url = f"https://api.reverb.com/api/listings/{listing_id}"
     data = {"state": "active"}
-    response = requests.put(f"https://api.reverb.com/api/listings/{listing_id}", headers=headers, json=data)
-    return response.json()
+    r = requests.put(url, headers=headers, json=data)
+    return r.json()
 
 st.title("Reverb Draft Manager")
 
