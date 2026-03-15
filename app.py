@@ -8,14 +8,30 @@ headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/js
 def get_drafts():
     url = "https://api.reverb.com/api/listings?state=draft"
     r = requests.get(url, headers=headers)
-    return r.json().get("listings", [])
+
+    st.write("Status Code:", r.status_code)   # باش تشوف الرد
+    st.write("Response Text:", r.text[:500]) # أول 500 كاراكتر من الرد
+
+    try:
+        return r.json().get("listings", [])
+    except Exception as e:
+        st.error(f"JSON decode error: {e}")
+        return []
 
 # Publish draft
 def publish_draft(listing_id):
     url = f"https://api.reverb.com/api/listings/{listing_id}"
     data = {"state": "active"}
     r = requests.put(url, headers=headers, json=data)
-    return r.json()
+
+    st.write("Publish Status:", r.status_code)
+    st.write("Publish Response:", r.text[:500])
+
+    try:
+        return r.json()
+    except Exception as e:
+        st.error(f"Publish JSON error: {e}")
+        return {}
 
 st.title("Reverb Draft Manager")
 
