@@ -22,8 +22,13 @@ st.title("Reverb Draft Manager")
 drafts = get_drafts()
 
 st.subheader("Draft Listings")
+
+selected_ids = []
 for draft in drafts:
-    st.write(f"{draft['title']} - {draft['condition']}")
-    if st.button(f"Publish {draft['title']}", key=draft['id']):
-        result = publish_draft(draft['id'])
-        st.success(f"Published {draft['title']}!")
+    if st.checkbox(f"{draft['title']} - {draft['condition']}", key=draft['id']):
+        selected_ids.append(draft['id'])
+
+if st.button("Publish Selected Drafts"):
+    for listing_id in selected_ids:
+        result = publish_draft(listing_id)
+        st.success(f"Published listing ID {listing_id}!")
