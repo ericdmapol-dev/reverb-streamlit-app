@@ -2,37 +2,46 @@ import streamlit as st
 import requests
 
 API_KEY = "YOUR_REVERB_API_KEY"
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json",
-    "Accept-Version": "3.0"
-}
+headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
-def get_drafts(page=1):
-    url = f"https://api.reverb.com/api/listings?state=draft&page={page}&per_page=24"
+# Get drafts
+def get_drafts():
+    url = "https://api.reverb.com/api/listings?state=draft"
     r = requests.get(url, headers=headers)
-    return r.json().get("listings", [])
 
+    st.write("Status Code:", r.status_code)   # باش تشوف الرد
+    st.write("Response Text:", r.text[:500]) # أول 500 كاراكتر من الرد
+
+    try:
+        return r.json().get("listings", [])
+    except Exception as e:
+        st.error(f"JSON decode error: {e}")
+        return []
+
+# Publish draft
 def publish_draft(listing_id):
     url = f"https://api.reverb.com/api/listings/{listing_id}"
     data = {"state": "active"}
     r = requests.put(url, headers=headers, json=data)
-    return r.json()
+
+    st.write("Publish Status:", r.status_code)
+    st.write("Publish Response:", r.text[:500])
+
+    try:
+        return r.json()
+    except Exception as e:
+        st.error(f"Publish JSON error: {e}")
+        return {}
 
 st.title("Reverb Draft Manager")
 
-page = st.number_input("Page", min_value=1, value=1)
-drafts = get_drafts(page)
+drafts = get_drafts()
 
-st.subheader(f"Draft Listings (Page {page})")
+st.subheader("Draft Listings")
 
 selected_ids = []
 for draft in drafts:
-    # نعرض العنوان أو الموديل إذا ما كاينش title
-    title = draft.get("title") or f"{draft.get('make','')} {draft.get('model','')}"
-    condition = draft.get("condition", "Unknown")
-    st.write(f"ID: {draft['id']} | {title} | {condition}")
-    if st.checkbox(f"Select {title}", key=draft['id']):
+    if st.checkbox(f"{draft['title']} - {draft['condition']}", key=draft['id']):
         selected_ids.append(draft['id'])
 
 if st.button("Publish Selected Drafts"):
